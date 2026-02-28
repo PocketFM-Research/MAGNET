@@ -1,10 +1,7 @@
 from __future__ import annotations
-
 import json
 from typing import Any
-
 from sim_types import StepResult
-
 
 class WorldProxyEnv:
     def __init__(self, llm: object | None = None) -> None:

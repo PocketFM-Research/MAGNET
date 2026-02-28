@@ -1,7 +1,4 @@
-"""Minimal multi-step character agent with prompt chaining."""
-
 from __future__ import annotations
-
 from prompts import build_action_prompt, build_critic_prompt, build_intent_prompt
 from sim_types import CharacterDecision, CharacterProfile
 

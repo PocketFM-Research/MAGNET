@@ -1,7 +1,4 @@
-"""Prompt templates and few-shot examples for chained reasoning."""
-
 from __future__ import annotations
-
 import json
 from typing import Any
 

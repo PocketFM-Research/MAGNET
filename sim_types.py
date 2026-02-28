@@ -1,12 +1,10 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-
 @dataclass
 class CharacterProfile:
     name: str
     description: str
-
 
 @dataclass
 class CharacterDecision:
@@ -16,14 +14,12 @@ class CharacterDecision:
     revisions_used: int
     rationale: str
 
-
 @dataclass
 class StepResult:
     event_text: str
     reward: float
     done: bool
     info: dict[str, Any]
-
 
 @dataclass
 class SimulationState:

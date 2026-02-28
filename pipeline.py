@@ -1,7 +1,5 @@
 from __future__ import annotations
-
 from dataclasses import dataclass
-
 from agents import CharacterAgent
 from environment import WorldProxyEnv
 from llm import build_default_llm

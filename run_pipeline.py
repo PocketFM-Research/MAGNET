@@ -1,9 +1,7 @@
 import os
-
 from environment import WorldProxyEnv
 from pipeline import Config, Pipeline
 from sim_types import CharacterProfile
-
 
 def main() -> None:
     if not os.getenv("OPENAI_API_KEY"):
