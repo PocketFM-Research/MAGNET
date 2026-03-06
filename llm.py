@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import os
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from typing import Any
 from urllib import request
@@ -14,6 +15,7 @@ class GeminiLLM:
     model: str = "gemini-2.5-flash"
     base_url: str = "https://generativelanguage.googleapis.com/v1beta"
     timeout_seconds: int = 45
+    output_log_path: str | None = "llm_output.txt"
 
     def complete_json(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         url = (
@@ -57,7 +59,30 @@ class GeminiLLM:
         if not isinstance(content, str):
             raise LLMError("Invalid Gemini response: missing text content.")
 
+        self._append_output_log(system_prompt, user_prompt, content)
         return json.loads(content)
+
+    def _append_output_log(self, system_prompt: str, user_prompt: str, content: str) -> None:
+        if not self.output_log_path:
+            return
+
+        timestamp = datetime.now(timezone.utc).isoformat()
+        block = (
+            f"[{timestamp}] model={self.model}\n"
+            "=== SYSTEM PROMPT ===\n"
+            f"{system_prompt}\n"
+            "=== USER PROMPT ===\n"
+            f"{user_prompt}\n"
+            "=== LLM OUTPUT ===\n"
+            f"{content}\n"
+            "=== END ===\n\n"
+        )
+        try:
+            with open(self.output_log_path, "a", encoding="utf-8") as handle:
+                handle.write(block)
+        except OSError:
+            # Do not fail the pipeline if logging cannot be written.
+            pass
 
 
 def build_default_llm() -> GeminiLLM:
@@ -67,4 +92,10 @@ def build_default_llm() -> GeminiLLM:
 
     model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     base_url = os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta")
-    return GeminiLLM(api_key=api_key, model=model, base_url=base_url)
+    output_log_path = os.getenv("GEMINI_OUTPUT_LOG_PATH", "llm_output.txt")
+    return GeminiLLM(
+        api_key=api_key,
+        model=model,
+        base_url=base_url,
+        output_log_path=output_log_path,
+    )
