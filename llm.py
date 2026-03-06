@@ -9,22 +9,26 @@ class LLMError(RuntimeError):
     pass
 
 @dataclass
-class OpenAICompatLLM:
+class GeminiLLM:
     api_key: str
-    model: str = "gpt-4o-mini"
-    base_url: str = "https://api.openai.com/v1"
+    model: str = "gemini-2.5-flash"
+    base_url: str = "https://generativelanguage.googleapis.com/v1beta"
     timeout_seconds: int = 45
 
     def complete_json(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
-        url = f"{self.base_url.rstrip('/')}/chat/completions"
+        url = (
+            f"{self.base_url.rstrip('/')}/models/{self.model}:generateContent"
+            f"?key={self.api_key}"
+        )
         payload = {
-            "model": self.model,
-            "temperature": 0.1,
-            "response_format": {"type": "json_object"},
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
+            "systemInstruction": {"parts": [{"text": system_prompt}]},
+            "contents": [
+                {"role": "user", "parts": [{"text": user_prompt}]},
             ],
+            "generationConfig": {
+                "temperature": 0.1,
+                "responseMimeType": "application/json",
+            },
         }
         body = json.dumps(payload).encode("utf-8")
 
@@ -33,7 +37,6 @@ class OpenAICompatLLM:
             data=body,
             method="POST",
             headers={
-                "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
             },
         )
@@ -42,23 +45,26 @@ class OpenAICompatLLM:
             raw = resp.read().decode("utf-8")
 
         parsed = json.loads(raw)
-        choices = parsed.get("choices")
-        if not isinstance(choices, list) or not choices:
-            raise LLMError("Invalid LLM response: missing choices.")
+        candidates = parsed.get("candidates")
+        if not isinstance(candidates, list) or not candidates:
+            raise LLMError("Invalid Gemini response: missing candidates.")
 
-        message = choices[0].get("message", {})
-        content = message.get("content")
+        parts = candidates[0].get("content", {}).get("parts", [])
+        if not isinstance(parts, list) or not parts:
+            raise LLMError("Invalid Gemini response: missing content parts.")
+
+        content = parts[0].get("text")
         if not isinstance(content, str):
-            raise LLMError("Invalid LLM response: missing message content.")
+            raise LLMError("Invalid Gemini response: missing text content.")
 
         return json.loads(content)
 
 
-def build_default_llm() -> OpenAICompatLLM:
-    api_key = os.getenv("OPENAI_API_KEY")
+def build_default_llm() -> GeminiLLM:
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        raise LLMError("OPENAI_API_KEY is required.")
+        raise LLMError("GEMINI_API_KEY is required.")
 
-    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-    base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-    return OpenAICompatLLM(api_key=api_key, model=model, base_url=base_url)
+    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    base_url = os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta")
+    return GeminiLLM(api_key=api_key, model=model, base_url=base_url)

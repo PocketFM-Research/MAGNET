@@ -4,8 +4,8 @@ from pipeline import Config, Pipeline
 from sim_types import CharacterProfile
 
 def main() -> None:
-    if not os.getenv("OPENAI_API_KEY"):
-        raise RuntimeError("OPENAI_API_KEY is required.")
+    if not os.getenv("GEMINI_API_KEY"):
+        raise RuntimeError("GEMINI_API_KEY is required.")
 
     characters = [
         CharacterProfile(
