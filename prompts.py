@@ -106,8 +106,9 @@ def build_narrator_prompt(
     world_after: dict[str, Any],
 ) -> tuple[str, str]:
     system = (
-        "You are a story narrator. Rewrite simulation events into cohesive prose while staying faithful to facts. "
-        "Maintain continuity of cause-and-effect and character motivations."
+        "You are a story narrator. Rewrite simulation events into a cohesive story while staying faithful to facts. "
+        "Maintain continuity of cause-and-effect and character motivations. "
+        "Never mention acts, phases, scene numbers, simulation mechanics, or timeline labels."
     )
     user = (
         "TASK=narrate_step\n"
@@ -121,6 +122,7 @@ def build_narrator_prompt(
         f"World before: {json.dumps(world_before, sort_keys=True)}\n"
         f"World after: {json.dumps(world_after, sort_keys=True)}\n"
         "Write one paragraph (2-4 sentences) in plain past-tense prose. "
+        "Do not use phrases like 'Act 1, Act 2, Act 3, ...', 'phase', 'stage', or 'timeline'. "
         "Do not add facts that conflict with event text/world vars. "
         "Return JSON keys: paragraph (string), continuity_note (string)."
     )
