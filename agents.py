@@ -1,5 +1,10 @@
 from __future__ import annotations
-from prompts import build_action_prompt, build_critic_prompt, build_intent_prompt
+from prompts import (
+    build_action_prompt,
+    build_critic_prompt,
+    build_intent_prompt,
+    build_narrator_prompt,
+)
 from sim_types import CharacterDecision, CharacterProfile
 
 
@@ -69,3 +74,39 @@ class CharacterAgent:
             revisions_used=revisions_used,
             rationale=rationale,
         )
+
+
+class NarratorAgent:
+    def __init__(self, llm: object) -> None:
+        self.llm = llm
+
+    def narrate_step(
+        self,
+        story_goal: str,
+        opening: str,
+        recent_story: list[str],
+        actor: str,
+        intent: str,
+        action: str,
+        event_text: str,
+        world_before: dict,
+        world_after: dict,
+    ) -> str:
+        narrator_sys, narrator_user = build_narrator_prompt(
+            story_goal=story_goal,
+            opening=opening,
+            recent_story=recent_story,
+            actor=actor,
+            intent=intent,
+            action=action,
+            event_text=event_text,
+            world_before=world_before,
+            world_after=world_after,
+        )
+        try:
+            narrator_resp = self.llm.complete_json(narrator_sys, narrator_user)
+        except Exception:
+            return event_text
+
+        paragraph = str(narrator_resp.get("paragraph", "")).strip()
+        return paragraph or event_text

@@ -92,3 +92,36 @@ def build_critic_prompt(
         "Return JSON keys: revise (boolean), confidence (0..1), feedback (string)."
     )
     return system, user
+
+
+def build_narrator_prompt(
+    story_goal: str,
+    opening: str,
+    recent_story: list[str],
+    actor: str,
+    intent: str,
+    action: str,
+    event_text: str,
+    world_before: dict[str, Any],
+    world_after: dict[str, Any],
+) -> tuple[str, str]:
+    system = (
+        "You are a story narrator. Rewrite simulation events into cohesive prose while staying faithful to facts. "
+        "Maintain continuity of cause-and-effect and character motivations."
+    )
+    user = (
+        "TASK=narrate_step\n"
+        f"Story goal: {story_goal}\n"
+        f"Opening: {opening}\n"
+        f"Recent story paragraphs: {json.dumps(recent_story)}\n"
+        f"Actor: {actor}\n"
+        f"Intent: {intent}\n"
+        f"Action: {action}\n"
+        f"Event text: {event_text}\n"
+        f"World before: {json.dumps(world_before, sort_keys=True)}\n"
+        f"World after: {json.dumps(world_after, sort_keys=True)}\n"
+        "Write one paragraph (2-4 sentences) in plain past-tense prose. "
+        "Do not add facts that conflict with event text/world vars. "
+        "Return JSON keys: paragraph (string), continuity_note (string)."
+    )
+    return system, user

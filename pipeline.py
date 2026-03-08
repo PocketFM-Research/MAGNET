@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from agents import CharacterAgent
+from agents import CharacterAgent, NarratorAgent
 from environment import WorldProxyEnv
 from llm import build_default_llm
 from memory import StructuredMemory
@@ -25,9 +25,11 @@ class Pipeline:
         if hasattr(env, "set_llm"):
             env.set_llm(self.llm)
         agents = [CharacterAgent(profile=profile, llm=self.llm) for profile in characters]
+        narrator = NarratorAgent(llm=self.llm)
 
         opening = env.reset([c.name for c in characters])
         timeline: list[str] = [opening]
+        story: list[str] = [opening]
         total_reward = 0.0
 
         for step in range(1, cfg.max_steps + 1):
@@ -65,6 +67,19 @@ class Pipeline:
                         f"rev={decision.revisions_used} -> {result.event_text}"
                     )
                 )
+                story.append(
+                    narrator.narrate_step(
+                        story_goal=cfg.goal,
+                        opening=opening,
+                        recent_story=story[-3:],
+                        actor=agent.profile.name,
+                        intent=decision.intent,
+                        action=decision.action,
+                        event_text=result.event_text,
+                        world_before=world_before,
+                        world_after=world_after,
+                    )
+                )
 
                 if result.done:
                     return {
@@ -73,6 +88,7 @@ class Pipeline:
                         "total_reward": total_reward,
                         "world_vars": world_after,
                         "timeline": timeline,
+                        "story": story,
                     }
 
         return {
@@ -81,11 +97,11 @@ class Pipeline:
             "total_reward": total_reward,
             "world_vars": env.get_world_vars(),
             "timeline": timeline,
+            "story": story,
         }
 
     @staticmethod
     def _should_act_now(character_name: str, world_vars: dict) -> bool:
-        """Reduce calls by selecting one main actor per act; keep both in post-sim."""
         if world_vars.get("phase") == "post":
             return True
 

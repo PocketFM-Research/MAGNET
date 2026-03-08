@@ -81,7 +81,6 @@ class GeminiLLM:
             with open(self.output_log_path, "a", encoding="utf-8") as handle:
                 handle.write(block)
         except OSError:
-            # Do not fail the pipeline if logging cannot be written.
             pass
 
 

@@ -43,6 +43,9 @@ def main() -> None:
     print("--- timeline ---")
     for line in result["timeline"]:
         print(line)
+    print("--- story ---")
+    for paragraph in result["story"]:
+        print(paragraph)
 
 
 if __name__ == "__main__":
