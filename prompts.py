@@ -124,6 +124,9 @@ def build_narrator_prompt(
         "Write one paragraph (2-4 sentences) in plain past-tense prose. "
         "Do not use phrases like 'Act 1, Act 2, Act 3, ...', 'phase', 'stage', or 'timeline'. "
         "Do not add facts that conflict with event text/world vars. "
+        "Focus on character motivations, emotional tone, and relationships. "
+        "Explain why the character took the action and how it affects others. "
+        "Use personality traits and goals when describing actions. "
         "Return JSON keys: paragraph (string), continuity_note (string)."
     )
     return system, user
