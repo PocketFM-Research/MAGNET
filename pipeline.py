@@ -9,7 +9,7 @@ from sim_types import CharacterProfile
 
 @dataclass
 class Config:
-    goal: str = "recreate_ant_and_dove_fable"
+    goal: str = "create a compelling story that achieves the characters' goals"
     max_steps: int = 8
     max_plan_revisions: int = 2
     rag_k: int = 3

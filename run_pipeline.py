@@ -17,7 +17,7 @@ def main() -> None:
     result = pipeline.run(
         env=env,
         characters=characters,
-        cfg=Config(goal=fable.goal, max_steps=6, max_plan_revisions=1, rag_k=2),
+        cfg=Config(goal=fable.goal, max_steps=10, max_plan_revisions=1, rag_k=2),
     )
 
     print(
