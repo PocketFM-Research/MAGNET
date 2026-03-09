@@ -29,7 +29,7 @@ class Pipeline:
 
         opening = env.reset([c.name for c in characters])
         timeline: list[str] = [opening]
-        story: list[str] = [opening]
+        story: list[str] = []
         total_reward = 0.0
 
         for step in range(1, cfg.max_steps + 1):
