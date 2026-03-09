@@ -63,10 +63,18 @@ class WorldProxyEnv:
         advances_goal = bool(progress.get("advances_goal", False))
         goal_reached = bool(progress.get("goal_reached", False))
         updates = progress.get("world_updates", {})
-        if isinstance(updates, dict):
-            for key, value in updates.items():
-                if isinstance(key, str):
-                    self._set_world_var(key, value)
+        if not isinstance(updates, dict):
+            updates = {}
+
+        if advances_goal and not goal_reached and not updates:
+            # Generic fallback to ensure progress is reflected even when model omits concrete updates.
+            updates = {
+                "progress_count": int(self._get_world_var("progress_count", 0)) + 1,
+                "last_progress_actor": character,
+                "last_progress_action": raw_action,
+            }
+
+        self._apply_world_updates(updates)
 
         if goal_reached:
             self._set_world_var(self.fable.completion_key, True)
@@ -107,6 +115,8 @@ class WorldProxyEnv:
             f"Final goal: {self.fable.goal}\n"
             f"World variables: {json.dumps(self.get_world_vars(), sort_keys=True)}\n"
             f"Action: {action}\n"
+            "If advances_goal=true and goal_reached=false, world_updates must include at least one concrete state change. "
+            "Do not write to reserved keys: turn, characters, fable_name.\n"
             "Return JSON keys: advances_goal (boolean), goal_reached (boolean), "
             "world_updates (object), confidence (0..1), reason (string)."
         )
@@ -116,6 +126,15 @@ class WorldProxyEnv:
         except Exception:
             return {"advances_goal": False, "goal_reached": False, "world_updates": {}}
         return resp if isinstance(resp, dict) else {"advances_goal": False, "goal_reached": False, "world_updates": {}}
+
+    def _apply_world_updates(self, updates: dict[str, Any]) -> None:
+        protected_keys = {"turn", "characters", "fable_name"}
+        for key, value in updates.items():
+            if not isinstance(key, str):
+                continue
+            if key in protected_keys:
+                continue
+            self._set_world_var(key, value)
 
     def _is_goal_reached(self) -> bool:
         return bool(self._get_world_var(self.fable.completion_key, False))
