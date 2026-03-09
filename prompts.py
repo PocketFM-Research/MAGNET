@@ -4,22 +4,22 @@ from typing import Any
 
 FEW_SHOT_ACTION_EXAMPLES = """
 Example 1
-Character persona: ant focused on gathering food.
-World variables: {"goal_reached": false}
-Intent: find food while staying alert near the river.
-Output JSON: {"action": "forage along the riverbank", "confidence": 0.88, "rationale": "The ant's routine behavior can naturally move the story toward danger and later mutual help."}
+Character persona: cautious medic trying to evacuate civilians.
+World variables: {"alarm_active": true, "exit_blocked": false, "goal_reached": false}
+Intent: move injured civilians toward safety without causing panic.
+Output JSON: {"action": "guide the two most injured civilians through the east corridor to the marked shelter door", "confidence": 0.9, "rationale": "It is concrete, immediately reduces danger, and creates measurable progress toward full evacuation."}
 
 Example 2
-Character persona: dove who helps nearby creatures.
-World variables: {"goal_reached": false}
-Intent: rescue the ant.
-Output JSON: {"action": "drop a broad leaf beside the ant", "confidence": 0.93, "rationale": "Helping immediately keeps the story moving toward the final goal of mutual survival."}
+Character persona: ambitious engineer under tight deadline pressure.
+World variables: {"prototype_failed": true, "time_remaining_hours": 3, "goal_reached": false}
+Intent: recover from failure and deliver a workable demo.
+Output JSON: {"action": "replace the unstable sensor module with the tested backup and rerun the core demo sequence", "confidence": 0.92, "rationale": "This directly addresses the failure source and advances the story with a high-impact recovery step instead of stalling."}
 
 Example 3
-Character persona: ant who remembers being saved.
-World variables: {"goal_reached": false}
-Intent: resolve danger by helping the dove survive.
-Output JSON: {"action": "bite the hunter's ankle", "confidence": 0.95, "rationale": "This directly protects the dove and pushes the story to its final goal."}
+Character persona: community organizer who values trust and accountability.
+World variables: {"team_conflict_open": true, "resources_secured": false, "goal_reached": false}
+Intent: resolve internal conflict so the team can secure supplies.
+Output JSON: {"action": "hold a 10-minute mediation between the two lead volunteers and assign clear pickup roles before departure", "confidence": 0.89, "rationale": "It resolves a blocking conflict and enables immediate next actions tied to the final objective."}
 """.strip()
 
 
@@ -82,8 +82,10 @@ def build_critic_prompt(
     world_vars: dict[str, Any],
 ) -> tuple[str, str]:
     system = (
-        "You are an action critic. Decide whether the proposed action should be revised. "
-        "Prefer revisions when the action conflicts with the character persona, world state, or progress toward the final goal."
+        "You are a strict action critic. Decide whether the proposed action should be revised. "
+        "Default to revise unless the action is clearly specific, non-redundant, and meaningfully advances the final goal. "
+        "Revise when the action is vague, repetitive, low-stakes, or stalls story progress. "
+        "Be conservative: approve only actions that create clear forward movement while remaining consistent with persona and world state."
     )
     user = (
         f"TASK=critic\n"
@@ -91,6 +93,8 @@ def build_critic_prompt(
         f"Action: {action}\n"
         f"Final goal: {goal}\n"
         f"World variables: {json.dumps(world_vars, sort_keys=True)}\n"
+        "Treat lack of progress as failure. If progress is uncertain, set revise=true.\n"
+        "Use feedback to demand a more concrete, less repetitive, higher-impact next action.\n"
         "Return JSON keys: revise (boolean), confidence (0..1), feedback (string)."
     )
     return system, user
