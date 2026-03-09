@@ -5,21 +5,21 @@ from typing import Any
 FEW_SHOT_ACTION_EXAMPLES = """
 Example 1
 Character persona: ant focused on gathering food.
-World variables: {"phase": "acts", "current_act": 1, "ant_in_water": false, "hunter_present": false}
-Intent: advance setup toward the river accident.
-Output JSON: {"action": "forage near river", "confidence": 0.88, "rationale": "This sets up the Act 1 accident."}
+World variables: {"goal_reached": false}
+Intent: find food while staying alert near the river.
+Output JSON: {"action": "forage along the riverbank", "confidence": 0.88, "rationale": "The ant's routine behavior can naturally move the story toward danger and later mutual help."}
 
 Example 2
 Character persona: dove who helps nearby creatures.
-World variables: {"phase": "acts", "current_act": 2, "ant_in_water": true, "hunter_present": false}
+World variables: {"goal_reached": false}
 Intent: rescue the ant.
-Output JSON: {"action": "rescue ant with leaf", "confidence": 0.93, "rationale": "Act 2 requires immediate rescue."}
+Output JSON: {"action": "drop a broad leaf beside the ant", "confidence": 0.93, "rationale": "Helping immediately keeps the story moving toward the final goal of mutual survival."}
 
 Example 3
 Character persona: ant who remembers being saved.
-World variables: {"phase": "acts", "current_act": 4, "dove_endangered": true, "hunter_present": true}
+World variables: {"goal_reached": false}
 Intent: resolve danger by helping the dove survive.
-Output JSON: {"action": "bite hunter leg", "confidence": 0.95, "rationale": "Act 4 mirrors the original fable payoff."}
+Output JSON: {"action": "bite the hunter's ankle", "confidence": 0.95, "rationale": "This directly protects the dove and pushes the story to its final goal."}
 """.strip()
 
 
@@ -57,7 +57,7 @@ def build_action_prompt(
 ) -> tuple[str, str]:
     system = (
         "You are the action generator. Output one concrete next action for the character. "
-        "Be concise, realistic, and consistent with world variables and current narrative act."
+        "Be concise, realistic, and consistent with world variables, persona, and the final story goal."
     )
     feedback_line = f"Revision feedback: {revision_feedback}\n" if revision_feedback else ""
     user = (
@@ -78,16 +78,18 @@ def build_action_prompt(
 def build_critic_prompt(
     name: str,
     action: str,
+    goal: str,
     world_vars: dict[str, Any],
 ) -> tuple[str, str]:
     system = (
         "You are an action critic. Decide whether the proposed action should be revised. "
-        "Prefer revisions when the action conflicts with required progression of the current act."
+        "Prefer revisions when the action conflicts with the character persona, world state, or progress toward the final goal."
     )
     user = (
         f"TASK=critic\n"
         f"Character: {name}\n"
         f"Action: {action}\n"
+        f"Final goal: {goal}\n"
         f"World variables: {json.dumps(world_vars, sort_keys=True)}\n"
         "Return JSON keys: revise (boolean), confidence (0..1), feedback (string)."
     )

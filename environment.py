@@ -2,7 +2,7 @@ from __future__ import annotations
 import json
 from typing import Any
 import networkx as nx
-from fables import FableDefinition, ActDefinition, PostRule, define_ant_and_dove_fable
+from fables import FableDefinition, define_ant_and_dove_fable
 from sim_types import StepResult
 
 
@@ -28,11 +28,8 @@ class WorldProxyEnv:
             self.world_graph.add_edge("world", node_id, relation="contains")
 
         self._set_world_var("turn", 0)
-        self._set_world_var("phase", "acts")
-        self._set_world_var("current_act", 1)
         self._set_world_var("characters", list(characters))
         self._set_world_var("fable_name", self.fable.name)
-        self._set_world_var("post_turns", 0)
         for key, value in self.fable.initial_world_vars.items():
             self._set_world_var(key, value)
         return self.fable.opening
@@ -47,119 +44,81 @@ class WorldProxyEnv:
     def step(self, character: str, action: str) -> StepResult:
         self._set_world_var("turn", int(self._get_world_var("turn", 0)) + 1)
         actor = character.lower().strip()
-        act = action.lower().strip()
-
-        if self._get_world_var("phase") == "post":
-            return self._step_post(actor, character, act, action)
-        return self._step_acts(actor, character, act, action)
+        normalized_action = action.lower().strip()
+        return self._step_story(actor, character, normalized_action, action)
 
     def expected_actor(self) -> str | None:
-        if self._get_world_var("phase") == "post":
-            return None
-        transition = self._get_current_act_definition()
-        return transition.actor.lower().strip() if transition and transition.actor else None
+        return None
 
-    def _step_acts(self, actor: str, character: str, act: str, raw_action: str) -> StepResult:
-        current_act = int(self._get_world_var("current_act", 1))
-        transition = self._get_current_act_definition()
-        if transition is None:
-            return StepResult(event_text="No act transition.", reward=0.0, done=False, info={})
-
-        can_advance = self._can_advance_transition(transition, actor, act)
-        if can_advance:
-            for key, value in transition.updates.items():
-                self._set_world_var(key, value)
-
-            if transition.act >= len(self.fable.acts):
-                self._set_world_var("phase", "post")
-                self._set_world_var("current_act", transition.act + 1)
-            else:
-                self._set_world_var("current_act", transition.act + 1)
-
+    def _step_story(self, actor: str, character: str, action: str, raw_action: str) -> StepResult:
+        if self._is_goal_reached():
             return StepResult(
-                event_text=transition.event_text,
-                reward=transition.reward,
+                event_text=f"Goal already reached. {character} does '{raw_action}'.",
+                reward=0.0,
+                done=True,
+                info={"goal_reached": True},
+            )
+
+        progress = self._llm_goal_judgement(action, actor=actor)
+        advances_goal = bool(progress.get("advances_goal", False))
+        goal_reached = bool(progress.get("goal_reached", False))
+        updates = progress.get("world_updates", {})
+        if isinstance(updates, dict):
+            for key, value in updates.items():
+                if isinstance(key, str):
+                    self._set_world_var(key, value)
+
+        if goal_reached:
+            self._set_world_var(self.fable.completion_key, True)
+            return StepResult(
+                event_text=f"Goal reached: {character} does '{raw_action}'.",
+                reward=self.fable.progress_reward,
+                done=True,
+                info={"goal_reached": True, "advances_goal": True},
+            )
+
+        if advances_goal:
+            return StepResult(
+                event_text=f"Story progresses toward the goal as {character} does '{raw_action}'.",
+                reward=self.fable.progress_reward,
                 done=False,
-                info={"act": transition.act},
+                info={"goal_reached": False, "advances_goal": True},
             )
 
         return StepResult(
-            event_text=f"Act {current_act} continues. {character} does '{raw_action}'.",
-            reward=0.0,
+            event_text=f"Story continues. {character} does '{raw_action}'.",
+            reward=self.fable.fallback_reward,
             done=False,
-            info={"act": current_act},
+            info={"goal_reached": False, "advances_goal": False},
         )
 
-    def _step_post(self, actor: str, character: str, act: str, raw_action: str) -> StepResult:
-        self._set_world_var("post_turns", int(self._get_world_var("post_turns", 0)) + 1)
-        matched_rule: PostRule | None = None
-        for rule in self.fable.post_rules:
-            actor_ok = rule.actor is None or actor == rule.actor.lower().strip()
-            if not actor_ok:
-                continue
-            if not rule.requires_llm:
-                matched_rule = rule
-                break
-            if self._llm_allows_progress(act, actor=actor, objective=rule.objective):
-                matched_rule = rule
-                break
-
-        if matched_rule:
-            event = matched_rule.event_text
-            reward = matched_rule.reward
-        else:
-            event = f"Post-sim: {character} does '{raw_action}' as daily routine continues."
-            reward = self.fable.post_fallback_reward
-
-        done = int(self._get_world_var("post_turns", 0)) >= self.fable.post_done_after_turns
-        return StepResult(event_text=event, reward=reward, done=done, info={"phase": "post"})
-
-    def _can_advance_transition(self, transition: ActDefinition, actor: str, action: str) -> bool:
-        actor_ok = transition.actor is None or actor == transition.actor.lower().strip()
-        if not actor_ok:
-            return False
-
-        for key, expected in transition.preconditions.items():
-            if self._get_world_var(key) != expected:
-                return False
-
-        if not transition.requires_llm:
-            return True
-
-        return self._llm_allows_progress(action, actor=actor, objective=transition.objective)
-
-    def _get_current_act_definition(self) -> ActDefinition | None:
-        current_act = int(self._get_world_var("current_act", 1))
-        for transition in self.fable.acts:
-            if transition.act == current_act:
-                return transition
-        return None
-
-    def _llm_allows_progress(self, action: str, actor: str, objective: str | None) -> bool:
+    def _llm_goal_judgement(self, action: str, actor: str) -> dict[str, Any]:
         if self.llm is None:
-            return False
-
-        if objective is None:
-            return False
+            return {"advances_goal": False, "goal_reached": False, "world_updates": {}}
 
         system_prompt = (
-            "You are a strict simulation transition judge. "
-            "Given current world state and one action, decide if it semantically satisfies the stage objective. "
+            "You are a strict story progression judge. "
+            "Given world state and one action, decide if the action plausibly progresses the story toward the final goal, "
+            "or fully achieves that final goal."
         )
         user_prompt = (
-            f"TASK=stage_judge\n"
+            f"TASK=goal_judge\n"
             f"Actor: {actor}\n"
-            f"Objective: {objective}\n"
+            f"Final goal: {self.fable.goal}\n"
             f"World variables: {json.dumps(self.get_world_vars(), sort_keys=True)}\n"
             f"Action: {action}\n"
-            "Return JSON keys: advance (boolean), confidence (0..1), reason (string)."
+            "Return JSON keys: advances_goal (boolean), goal_reached (boolean), "
+            "world_updates (object), confidence (0..1), reason (string)."
         )
 
         try:
             resp = self.llm.complete_json(system_prompt, user_prompt)
         except Exception:
-            return False
-        return bool(resp.get("advance", False))
+            return {"advances_goal": False, "goal_reached": False, "world_updates": {}}
+        return resp if isinstance(resp, dict) else {"advances_goal": False, "goal_reached": False, "world_updates": {}}
+
+    def _is_goal_reached(self) -> bool:
+        return bool(self._get_world_var(self.fable.completion_key, False))
 
     def _set_world_var(self, key: str, value: Any) -> None:
         node_id = f"state:{key}"

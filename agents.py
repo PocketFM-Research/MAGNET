@@ -55,11 +55,11 @@ class CharacterAgent:
             confidence = float(confidence_value) if isinstance(confidence_value, (int, float, str)) else 0.4
             rationale = str(action_resp.get("rationale", ""))
 
-            if world_vars.get("phase") == "post" or max_plan_revisions <= 0:
+            if max_plan_revisions <= 0:
                 revise = False
                 feedback = ""
             else:
-                critic_sys, critic_user = build_critic_prompt(self.profile.name, action, world_vars)
+                critic_sys, critic_user = build_critic_prompt(self.profile.name, action, goal, world_vars)
                 critic_resp = self.llm.complete_json(critic_sys, critic_user)
                 revise = bool(critic_resp.get("revise", False))
                 feedback = str(critic_resp.get("feedback", ""))

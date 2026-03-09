@@ -102,10 +102,4 @@ class Pipeline:
 
     @staticmethod
     def _should_act_now(character_name: str, world_vars: dict, env: WorldProxyEnv) -> bool:
-        if world_vars.get("phase") == "post":
-            return True
-
-        expected = env.expected_actor() if hasattr(env, "expected_actor") else None
-        if expected is None:
-            return True
-        return character_name.lower() == expected
+        return True
