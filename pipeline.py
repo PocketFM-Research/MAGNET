@@ -35,7 +35,7 @@ class Pipeline:
         for step in range(1, cfg.max_steps + 1):
             for agent in agents:
                 world_before = env.get_world_vars()
-                if not self._should_act_now(agent.profile.name, world_before):
+                if not self._should_act_now(agent.profile.name, world_before, env):
                     continue
                 query = f"goal={cfg.goal} world={world_before}"
                 memory_snippets = self.memory.retrieve(agent.profile.name, query=query, k=cfg.rag_k)
@@ -101,18 +101,11 @@ class Pipeline:
         }
 
     @staticmethod
-    def _should_act_now(character_name: str, world_vars: dict) -> bool:
+    def _should_act_now(character_name: str, world_vars: dict, env: WorldProxyEnv) -> bool:
         if world_vars.get("phase") == "post":
             return True
 
-        act = int(world_vars.get("current_act", 1))
-        actor_by_act = {
-            1: "ant",
-            2: "dove",
-            3: "ant",
-            4: "ant",
-        }
-        expected = actor_by_act.get(act)
+        expected = env.expected_actor() if hasattr(env, "expected_actor") else None
         if expected is None:
             return True
         return character_name.lower() == expected
