@@ -20,9 +20,10 @@ class CharacterAgent:
         memory_snippets: list[str],
         max_plan_revisions: int,
     ) -> CharacterDecision:
+        persona = self.profile.persona_text()
         intent_sys, intent_user = build_intent_prompt(
             self.profile.name,
-            self.profile.description,
+            persona,
             goal,
             world_vars,
             memory_snippets,
@@ -41,7 +42,7 @@ class CharacterAgent:
         while True:
             action_sys, action_user = build_action_prompt(
                 self.profile.name,
-                self.profile.description,
+                persona,
                 intent,
                 constraints,
                 world_vars,

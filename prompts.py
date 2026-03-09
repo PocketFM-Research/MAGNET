@@ -4,19 +4,19 @@ from typing import Any
 
 FEW_SHOT_ACTION_EXAMPLES = """
 Example 1
-Character description: ant focused on gathering food.
+Character persona: ant focused on gathering food.
 World variables: {"phase": "acts", "current_act": 1, "ant_in_water": false, "hunter_present": false}
 Intent: advance setup toward the river accident.
 Output JSON: {"action": "forage near river", "confidence": 0.88, "rationale": "This sets up the Act 1 accident."}
 
 Example 2
-Character description: dove who helps nearby creatures.
+Character persona: dove who helps nearby creatures.
 World variables: {"phase": "acts", "current_act": 2, "ant_in_water": true, "hunter_present": false}
 Intent: rescue the ant.
 Output JSON: {"action": "rescue ant with leaf", "confidence": 0.93, "rationale": "Act 2 requires immediate rescue."}
 
 Example 3
-Character description: ant who remembers being saved.
+Character persona: ant who remembers being saved.
 World variables: {"phase": "acts", "current_act": 4, "dove_endangered": true, "hunter_present": true}
 Intent: resolve danger by helping the dove survive.
 Output JSON: {"action": "bite hunter leg", "confidence": 0.95, "rationale": "Act 4 mirrors the original fable payoff."}
@@ -25,7 +25,7 @@ Output JSON: {"action": "bite hunter leg", "confidence": 0.95, "rationale": "Act
 
 def build_intent_prompt(
     name: str,
-    description: str,
+    persona: str,
     goal: str,
     world_vars: dict[str, Any],
     memory_snippets: list[str],
@@ -37,7 +37,7 @@ def build_intent_prompt(
     user = (
         f"TASK=intent\n"
         f"Character: {name}\n"
-        f"Description: {description}\n"
+        f"Persona: {persona}\n"
         f"Goal: {goal}\n"
         f"World variables: {json.dumps(world_vars, sort_keys=True)}\n"
         f"Retrieved memory: {json.dumps(memory_snippets)}\n"
@@ -48,7 +48,7 @@ def build_intent_prompt(
 
 def build_action_prompt(
     name: str,
-    description: str,
+    persona: str,
     intent: str,
     constraints: list[str],
     world_vars: dict[str, Any],
@@ -63,7 +63,7 @@ def build_action_prompt(
     user = (
         f"TASK=action\n"
         f"Character: {name}\n"
-        f"Description: {description}\n"
+        f"Persona: {persona}\n"
         f"Intent: {intent}\n"
         f"Constraints: {json.dumps(constraints)}\n"
         f"World variables: {json.dumps(world_vars, sort_keys=True)}\n"

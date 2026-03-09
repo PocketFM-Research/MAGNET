@@ -11,17 +11,25 @@ def main() -> None:
     characters = [
         CharacterProfile(
             name="Ant",
-            description=(
-                "A diligent ant who gathers food and learns from danger. "
-                "After being rescued, the ant repays kindness."
-            ),
+            role="helper",
+            traits=["hardworking", "small", "persistent"],
+            goals=["find food", "survive", "repay kindness"],
+            fears=["drowning"],
+            abilities=["bite", "crawl", "gather food"],
+            relationships={"Dove": "grateful ally"},
+            state={"injured": False, "wet": False},
+            description="An observant ant who remembers favors and acts decisively under pressure.",
         ),
         CharacterProfile(
             name="Dove",
-            description=(
-                "A compassionate dove who watches over others and acts quickly to help. "
-                "After facing the hunter, the dove becomes more vigilant."
-            ),
+            role="protector",
+            traits=["compassionate", "alert", "brave"],
+            goals=["protect nearby creatures", "avoid the hunter"],
+            fears=["hunter's arrows"],
+            abilities=["fly", "spot danger", "carry twigs and leaves"],
+            relationships={"Ant": "trusted friend"},
+            state={"injured": False, "nest_safe": True},
+            description="A watchful dove who intervenes quickly when others are in danger.",
         ),
     ]
 
