@@ -84,7 +84,6 @@ class NarratorAgent:
     def narrate_step(
         self,
         story_goal: str,
-        opening: str,
         recent_story: list[str],
         actor: str,
         intent: str,
@@ -95,7 +94,6 @@ class NarratorAgent:
     ) -> str:
         narrator_sys, narrator_user = build_narrator_prompt(
             story_goal=story_goal,
-            opening=opening,
             recent_story=recent_story,
             actor=actor,
             intent=intent,

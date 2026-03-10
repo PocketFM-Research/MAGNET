@@ -10,7 +10,6 @@ from sim_types import CharacterProfile
 class FableDefinition:
     name: str
     goal: str
-    opening: str
     characters: list[CharacterProfile]
     initial_world_vars: dict[str, Any]
     progress_reward: float = 0.5
@@ -47,7 +46,6 @@ def define_ant_and_dove_fable() -> FableDefinition:
     return FableDefinition(
         name="ant_and_dove",
         goal="The ant and dove survive danger through mutual help, and the ant ultimately saves the dove from the hunter.",
-        opening="The ant searches for food near the river while the dove watches from a tree.",
         characters=characters,
         initial_world_vars={
             "goal_reached": False,

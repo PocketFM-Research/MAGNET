@@ -27,8 +27,8 @@ class Pipeline:
         agents = [CharacterAgent(profile=profile, llm=self.llm) for profile in characters]
         narrator = NarratorAgent(llm=self.llm)
 
-        opening = env.reset([c.name for c in characters])
-        timeline: list[str] = [opening]
+        env.reset([c.name for c in characters])
+        timeline: list[str] = []
         story: list[str] = []
         total_reward = 0.0
 
@@ -70,7 +70,6 @@ class Pipeline:
                 story.append(
                     narrator.narrate_step(
                         story_goal=cfg.goal,
-                        opening=opening,
                         recent_story=story[-3:],
                         actor=agent.profile.name,
                         intent=decision.intent,

@@ -102,7 +102,6 @@ def build_critic_prompt(
 
 def build_narrator_prompt(
     story_goal: str,
-    opening: str,
     recent_story: list[str],
     actor: str,
     intent: str,
@@ -119,7 +118,6 @@ def build_narrator_prompt(
     user = (
         "TASK=narrate_step\n"
         f"Story goal: {story_goal}\n"
-        f"Opening: {opening}\n"
         f"Recent story paragraphs: {json.dumps(recent_story)}\n"
         f"Actor: {actor}\n"
         f"Intent: {intent}\n"

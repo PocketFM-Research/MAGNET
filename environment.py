@@ -18,7 +18,7 @@ class WorldProxyEnv:
     def set_fable(self, fable: FableDefinition) -> None:
         self.fable = fable
 
-    def reset(self, characters: list[str]) -> str:
+    def reset(self, characters: list[str]) -> None:
         self.world_graph = nx.DiGraph()
         self.world_graph.add_node("world", kind="world")
 
@@ -32,7 +32,7 @@ class WorldProxyEnv:
         self._set_world_var("fable_name", self.fable.name)
         for key, value in self.fable.initial_world_vars.items():
             self._set_world_var(key, value)
-        return self.fable.opening
+        return None
 
     def get_world_vars(self) -> dict[str, Any]:
         world_vars: dict[str, Any] = {}
@@ -67,7 +67,6 @@ class WorldProxyEnv:
             updates = {}
 
         if advances_goal and not goal_reached and not updates:
-            # Generic fallback to ensure progress is reflected even when model omits concrete updates.
             updates = {
                 "progress_count": int(self._get_world_var("progress_count", 0)) + 1,
                 "last_progress_actor": character,
