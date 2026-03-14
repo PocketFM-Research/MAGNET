@@ -134,3 +134,25 @@ def build_narrator_prompt(
         "Return JSON keys: paragraph (string), continuity_note (string)."
     )
     return system, user
+
+
+def build_new_goal_prompt(
+    completed_goal: str,
+    recent_story: list[str],
+    world_vars: dict[str, Any],
+) -> tuple[str, str]:
+    system = (
+        "You are a story narrator extending the story after a goal has just been achieved. "
+        "Create the next concrete story goal so the narrative continues naturally from the current state."
+    )
+    user = (
+        "TASK=new_goal\n"
+        f"Completed goal: {completed_goal}\n"
+        f"Recent story paragraphs: {json.dumps(recent_story)}\n"
+        f"World variables: {json.dumps(world_vars, sort_keys=True)}\n"
+        "Write a new story goal that follows from the completed one, raises or redirects the stakes, "
+        "does not repeat past goals, and remains achievable through future character actions. "
+        "Avoid repeating the completed goal verbatim or ending the story. "
+        "Return JSON keys: goal (string), rationale (string)."
+    )
+    return system, user

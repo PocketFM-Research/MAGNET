@@ -35,13 +35,14 @@ class Pipeline:
         for step in range(1, cfg.max_steps + 1):
             for agent in agents:
                 world_before = env.get_world_vars()
+                active_goal = env.get_current_goal()
                 if not self._should_act_now(agent.profile.name, world_before, env):
                     continue
-                query = f"goal={cfg.goal} world={world_before}"
+                query = f"goal={active_goal} world={world_before}"
                 memory_snippets = self.memory.retrieve(agent.profile.name, query=query, k=cfg.rag_k)
 
                 decision = agent.decide_action(
-                    goal=cfg.goal,
+                    goal=active_goal,
                     world_vars=world_before,
                     memory_snippets=memory_snippets,
                     max_plan_revisions=cfg.max_plan_revisions,
@@ -62,14 +63,14 @@ class Pipeline:
                 total_reward += result.reward
                 timeline.append(
                     (
-                        f"t={step} actor={agent.profile.name} intent={decision.intent} "
+                        f"t={step} goal={active_goal} actor={agent.profile.name} intent={decision.intent} "
                         f"action={decision.action} conf={decision.confidence:.2f} "
                         f"rev={decision.revisions_used} -> {result.event_text}"
                     )
                 )
                 story.append(
                     narrator.narrate_step(
-                        story_goal=cfg.goal,
+                        story_goal=active_goal,
                         recent_story=story[-3:],
                         actor=agent.profile.name,
                         intent=decision.intent,
@@ -79,6 +80,20 @@ class Pipeline:
                         world_after=world_after,
                     )
                 )
+
+                if result.info.get("goal_completed"):
+                    completed_goal = str(result.info.get("completed_goal", active_goal))
+                    new_goal = narrator.generate_next_goal(
+                        completed_goal=completed_goal,
+                        recent_story=story[-3:],
+                        world_vars=world_after,
+                    )
+                    env.set_new_goal(new_goal)
+                    rolled_world = env.get_world_vars()
+                    timeline.append(
+                        f"t={step} narrator=new_goal completed_goal={completed_goal} -> next_goal={new_goal}"
+                    )
+                    world_after = rolled_world
 
                 if result.done:
                     return {

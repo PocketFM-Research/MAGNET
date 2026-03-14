@@ -30,6 +30,8 @@ class WorldProxyEnv:
         self._set_world_var("turn", 0)
         self._set_world_var("characters", list(characters))
         self._set_world_var("fable_name", self.fable.name)
+        self._set_world_var("current_goal", self.fable.goal)
+        self._set_world_var("goal_history", [self.fable.goal])
         for key, value in self.fable.initial_world_vars.items():
             self._set_world_var(key, value)
         return None
@@ -51,14 +53,6 @@ class WorldProxyEnv:
         return None
 
     def _step_story(self, actor: str, character: str, action: str, raw_action: str) -> StepResult:
-        if self._is_goal_reached():
-            return StepResult(
-                event_text=f"Goal already reached. {character} does '{raw_action}'.",
-                reward=0.0,
-                done=True,
-                info={"goal_reached": True},
-            )
-
         progress = self._llm_goal_judgement(action, actor=actor)
         advances_goal = bool(progress.get("advances_goal", False))
         goal_reached = bool(progress.get("goal_reached", False))
@@ -76,12 +70,18 @@ class WorldProxyEnv:
         self._apply_world_updates(updates)
 
         if goal_reached:
+            completed_goal = self.get_current_goal()
             self._set_world_var(self.fable.completion_key, True)
             return StepResult(
                 event_text=f"Goal reached: {character} does '{raw_action}'.",
                 reward=self.fable.progress_reward,
-                done=True,
-                info={"goal_reached": True, "advances_goal": True},
+                done=False,
+                info={
+                    "goal_reached": True,
+                    "advances_goal": True,
+                    "goal_completed": True,
+                    "completed_goal": completed_goal,
+                },
             )
 
         if advances_goal:
@@ -111,11 +111,11 @@ class WorldProxyEnv:
         user_prompt = (
             f"TASK=goal_judge\n"
             f"Actor: {actor}\n"
-            f"Final goal: {self.fable.goal}\n"
+            f"Final goal: {self.get_current_goal()}\n"
             f"World variables: {json.dumps(self.get_world_vars(), sort_keys=True)}\n"
             f"Action: {action}\n"
             "If advances_goal=true and goal_reached=false, world_updates must include at least one concrete state change. "
-            "Do not write to reserved keys: turn, characters, fable_name.\n"
+            "Do not write to reserved keys: turn, characters, fable_name, current_goal, goal_history.\n"
             "Return JSON keys: advances_goal (boolean), goal_reached (boolean), "
             "world_updates (object), confidence (0..1), reason (string)."
         )
@@ -127,13 +127,27 @@ class WorldProxyEnv:
         return resp if isinstance(resp, dict) else {"advances_goal": False, "goal_reached": False, "world_updates": {}}
 
     def _apply_world_updates(self, updates: dict[str, Any]) -> None:
-        protected_keys = {"turn", "characters", "fable_name"}
+        protected_keys = {"turn", "characters", "fable_name", "current_goal", "goal_history"}
         for key, value in updates.items():
             if not isinstance(key, str):
                 continue
             if key in protected_keys:
                 continue
             self._set_world_var(key, value)
+
+    def get_current_goal(self) -> str:
+        goal = self._get_world_var("current_goal", self.fable.goal)
+        return str(goal) if goal else self.fable.goal
+
+    def set_new_goal(self, new_goal: str) -> None:
+        normalized_goal = new_goal.strip() or self.fable.goal
+        previous_goal = self.get_current_goal()
+        history = list(self._get_world_var("goal_history", [previous_goal]))
+        history.append(normalized_goal)
+
+        self._set_world_var("current_goal", normalized_goal)
+        self._set_world_var("goal_history", history)
+        self._set_world_var(self.fable.completion_key, False)
 
     def _is_goal_reached(self) -> bool:
         return bool(self._get_world_var(self.fable.completion_key, False))

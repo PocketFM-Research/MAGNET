@@ -2,6 +2,7 @@ from __future__ import annotations
 from prompts import (
     build_action_prompt,
     build_critic_prompt,
+    build_new_goal_prompt,
     build_intent_prompt,
     build_narrator_prompt,
 )
@@ -109,3 +110,19 @@ class NarratorAgent:
 
         paragraph = str(narrator_resp.get("paragraph", "")).strip()
         return paragraph or event_text
+
+    def generate_next_goal(
+        self,
+        completed_goal: str,
+        recent_story: list[str],
+        world_vars: dict,
+    ) -> str:
+        goal_sys, goal_user = build_new_goal_prompt(
+            completed_goal=completed_goal,
+            recent_story=recent_story,
+            world_vars=world_vars,
+        )
+        goal_resp = self.llm.complete_json(goal_sys, goal_user)
+
+        next_goal = str(goal_resp.get("goal", "")).strip()
+        return next_goal 
