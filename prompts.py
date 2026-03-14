@@ -32,7 +32,7 @@ def build_intent_prompt(
 ) -> tuple[str, str]:
     system = (
         "You are the intent planner for a character in a text simulation. "
-        "Use persona + current world state to produce the next high-level intent."
+        "Use persona, goal, and current world state to produce the next high-level intent."
     )
     user = (
         f"TASK=intent\n"
