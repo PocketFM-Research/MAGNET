@@ -45,7 +45,7 @@ def define_ant_and_dove_fable() -> FableDefinition:
 
     return FableDefinition(
         name="ant_and_dove",
-        goal="The ant and dove survive danger through mutual help, and the ant ultimately saves the dove from the hunter.",
+        goal="The ant saves the dove from the hunter.",
         characters=characters,
         initial_world_vars={
             "goal_reached": False,

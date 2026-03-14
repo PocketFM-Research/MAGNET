@@ -123,7 +123,7 @@ class WorldProxyEnv:
             "You are a strict story progression judge. "
             "Given world state and one action, decide if the action plausibly progresses the story toward the final goal, "
             "or fully achieves that final goal."
-            "Be conservative: approve only actions that progress the story."
+            "Be conservative: approve only actions that progress the story substantially."
         )
         user_prompt = (
             f"TASK=goal_judge\n"
