@@ -43,17 +43,24 @@ class WorldProxyEnv:
                 world_vars[str(data["key"])] = data.get("value")
         return world_vars
 
-    def step(self, character: str, action: str) -> StepResult:
+    def step(self, character: str, action: str, progress: dict[str, Any] | None = None) -> StepResult:
         self._set_world_var("turn", int(self._get_world_var("turn", 0)) + 1)
         actor = character.lower().strip()
         normalized_action = action.lower().strip()
-        return self._step_story(actor, character, normalized_action, action)
+        return self._step_story(actor, character, normalized_action, action, progress=progress)
 
     def expected_actor(self) -> str | None:
         return None
 
-    def _step_story(self, actor: str, character: str, action: str, raw_action: str) -> StepResult:
-        progress = self._llm_goal_judgement(action, actor=actor)
+    def _step_story(
+        self,
+        actor: str,
+        character: str,
+        action: str,
+        raw_action: str,
+        progress: dict[str, Any] | None = None,
+    ) -> StepResult:
+        progress = progress if isinstance(progress, dict) else self.judge_action(action, actor=actor)
         advances_goal = bool(progress.get("advances_goal", False))
         goal_reached = bool(progress.get("goal_reached", False))
         updates = progress.get("world_updates", {})
@@ -81,6 +88,7 @@ class WorldProxyEnv:
                     "advances_goal": True,
                     "goal_completed": True,
                     "completed_goal": completed_goal,
+                    "progress_reason": str(progress.get("reason", "")),
                 },
             )
 
@@ -89,17 +97,25 @@ class WorldProxyEnv:
                 event_text=f"Story progresses toward the goal as {character} does '{raw_action}'.",
                 reward=self.fable.progress_reward,
                 done=False,
-                info={"goal_reached": False, "advances_goal": True},
+                info={
+                    "goal_reached": False,
+                    "advances_goal": True,
+                    "progress_reason": str(progress.get("reason", "")),
+                },
             )
 
         return StepResult(
             event_text=f"Story continues. {character} does '{raw_action}'.",
             reward=self.fable.fallback_reward,
             done=False,
-            info={"goal_reached": False, "advances_goal": False},
+            info={
+                "goal_reached": False,
+                "advances_goal": False,
+                "progress_reason": str(progress.get("reason", "")),
+            },
         )
 
-    def _llm_goal_judgement(self, action: str, actor: str) -> dict[str, Any]:
+    def judge_action(self, action: str, actor: str) -> dict[str, Any]:
         if self.llm is None:
             return {"advances_goal": False, "goal_reached": False, "world_updates": {}}
 

@@ -83,9 +83,9 @@ def build_critic_prompt(
 ) -> tuple[str, str]:
     system = (
         "You are a strict action critic. Decide whether the proposed action should be revised. "
-        "Default to revise unless the action is clearly specific, non-redundant, and meaningfully advances the final goal. "
-        "Revise when the action is vague, repetitive, low-stakes, or stalls story progress. "
-        "Be conservative: approve only actions that create clear forward movement while remaining consistent with persona and world state."
+        "Focus on whether the action is specific, non-redundant, plausible in the current world, and consistent with the character's persona. "
+        "Revise when the action is vague, repetitive, out of character, implausible, or conflicts with world state. "
+        "Be conservative: approve only actions that are concrete, believable, and narratively coherent."
     )
     user = (
         f"TASK=critic\n"
@@ -93,8 +93,9 @@ def build_critic_prompt(
         f"Action: {action}\n"
         f"Final goal: {goal}\n"
         f"World variables: {json.dumps(world_vars, sort_keys=True)}\n"
-        "Treat lack of progress as failure. If progress is uncertain, set revise=true.\n"
-        "Use feedback to demand a more concrete, less repetitive, higher-impact next action.\n"
+        "Do not require the action to prove major goal progress. The environment judge will evaluate progress separately.\n"
+        "Reject actions that contradict persona, violate the established world, repeat recent state without adding anything new, or read as implausible filler.\n"
+        "Use feedback to demand a more concrete, less repetitive, more believable next action.\n"
         "Return JSON keys: revise (boolean), confidence (0..1), feedback (string)."
     )
     return system, user

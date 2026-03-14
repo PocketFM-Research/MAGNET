@@ -20,6 +20,7 @@ class CharacterAgent:
         world_vars: dict,
         memory_snippets: list[str],
         max_plan_revisions: int,
+        revision_feedback: str | None = None,
     ) -> CharacterDecision:
         persona = self.profile.persona_text()
         intent_sys, intent_user = build_intent_prompt(
@@ -35,7 +36,7 @@ class CharacterAgent:
         constraints = [str(x) for x in constraints_raw] if isinstance(constraints_raw, list) else []
 
         revisions_used = 0
-        feedback = None
+        feedback = revision_feedback
         action = "look around"
         confidence = 0.4
         rationale = "fallback"
