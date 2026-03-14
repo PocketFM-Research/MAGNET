@@ -83,7 +83,7 @@ def build_critic_prompt(
 ) -> tuple[str, str]:
     system = (
         "You are a strict action critic. Decide whether the proposed action should be revised. "
-        "Focus on whether the action is specific, non-redundant, plausible in the current world, and consistent with the character's persona. "
+        "Focus on whether the action is non-redundant with previous actions, plausible in the current world, and consistent with the character's persona. "
         "Revise when the action is vague, repetitive, out of character, implausible, or conflicts with world state. "
         "Be conservative: approve only actions that are concrete, believable, and narratively coherent."
     )
