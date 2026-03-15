@@ -44,17 +44,8 @@ class GeminiLLM:
             },
         )
 
-        for attempt in range(5):  
-            try:
-                with request.urlopen(req, timeout=self.timeout_seconds) as resp:
-                    raw = resp.read().decode("utf-8")  # store API response
-                break
-            except Exception as e:
-                if "429" in str(e):  # detect rate limit
-                    print("Hitting rate limit, waiting to retry...") 
-                    time.sleep(6)  # wait before retry
-                else:
-                    raise
+        with request.urlopen(req, timeout=self.timeout_seconds) as resp:
+            raw = resp.read().decode("utf-8")
                 
         parsed = json.loads(raw)
         candidates = parsed.get("candidates")
