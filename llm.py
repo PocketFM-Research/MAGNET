@@ -44,16 +44,19 @@ class GeminiLLM:
         )
 
         import time  
+        import json 
         for attempt in range(5):  
             try:
                 with request.urlopen(req, timeout=self.timeout_seconds) as resp:
-                    body = resp.read().decode("utf-8")
-                    break
+                    raw = resp.read().decode("utf-8")  # store API response
+                break
             except Exception as e:
                 if "429" in str(e):  # detect rate limit
-                    time.sleep(5)  # wait before retry
+                    print("Hitting rate limit, waiting to retry...") 
+                    time.sleep(6)  # wait before retry
                 else:
                     raise
+        parsed = json.loads(raw) 
 
         parsed = json.loads(raw)
         candidates = parsed.get("candidates")
