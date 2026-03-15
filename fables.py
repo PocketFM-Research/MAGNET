@@ -41,6 +41,17 @@ def define_ant_and_dove_fable() -> FableDefinition:
             state={"injured": False, "nest_safe": True},
             description="A watchful dove who intervenes quickly when others are in danger.",
         ),
+        CharacterProfile(
+            name="Hunter",
+            description="A cautious forest hunter searching for birds in the trees.",
+            role="antagonist",  # ADDED: narrative role
+            traits=["patient", "observant", "dangerous"],  # ADDED
+            goals=["hunt birds", "remain unseen"],  # ADDED
+            fears=["being attacked by animals"],  # ADDED
+            abilities=["aim bow", "shoot arrow", "set traps"],  # ADDED
+            relationships={"Dove": "prey"},  # ADDED
+            state={"armed": True, "alert": False},  # ADDED
+        ),
     ]
 
     return FableDefinition(
