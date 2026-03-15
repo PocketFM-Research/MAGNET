@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import time 
 import os
 from datetime import datetime, timezone
 from dataclasses import dataclass
@@ -43,8 +44,6 @@ class GeminiLLM:
             },
         )
 
-        import time  
-        import json 
         for attempt in range(5):  
             try:
                 with request.urlopen(req, timeout=self.timeout_seconds) as resp:
@@ -56,8 +55,7 @@ class GeminiLLM:
                     time.sleep(6)  # wait before retry
                 else:
                     raise
-        parsed = json.loads(raw) 
-
+                
         parsed = json.loads(raw)
         candidates = parsed.get("candidates")
         if not isinstance(candidates, list) or not candidates:
