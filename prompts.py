@@ -146,6 +146,8 @@ def build_new_goal_prompt(
     completed_goal: str,
     recent_story: list[str],
     world_vars: dict[str, Any],
+    character_context: list[dict[str, Any]],
+    goal_history: list[str],
 ) -> tuple[str, str]:
     system = (
         "You are a story narrator extending the story after a goal has just been achieved. "
@@ -156,8 +158,13 @@ def build_new_goal_prompt(
         f"Completed goal: {completed_goal}\n"
         f"Recent story paragraphs: {json.dumps(recent_story)}\n"
         f"World variables: {json.dumps(world_vars, sort_keys=True)}\n"
+        f"Available characters: {json.dumps(character_context, sort_keys=True)}\n"
+        f"Goal history: {json.dumps(goal_history)}\n"
         "Write a new story goal that follows from the completed one, raises or redirects the stakes, "
         "does not repeat past goals, and remains achievable through future character actions. "
+        "You may shift attention to an available character who was not central to the last goal, "
+        "but the new goal must still grow out of the recent story and current world state. "
+        "When introducing a less-used character, make that character's motive or ability relevant to the next conflict. "
         "Avoid repeating the completed goal verbatim or ending the story. "
         "Return JSON keys: goal (string), rationale (string)."
     )

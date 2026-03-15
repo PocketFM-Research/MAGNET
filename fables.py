@@ -41,6 +41,48 @@ def define_ant_and_dove_fable() -> FableDefinition:
             state={"injured": False, "nest_safe": True},
             description="A watchful dove who intervenes quickly when others are in danger.",
         ),
+        CharacterProfile(
+            name="Spider",
+            role="trickster",
+            traits=["cunning", "patient", "observant"],
+            goals=["gather information", "protect its web", "manipulate others subtly"],
+            fears=["disturbance to its territory", "being attacked by predators"],
+            abilities=["weave webs", "camouflage", "set traps"],
+            relationships={"Ant": "neutral observer", "Dove": "neutral observer"},
+            state={"web_intact": True, "alert": True},
+            description=(
+                "A quiet spider that studies every movement in the branches, guarding its web "
+                "while using patience and subtle traps to influence events without revealing itself too soon."
+            ),
+        ),
+        CharacterProfile(
+            name="Grasshopper",
+            role="companion",
+            traits=["optimistic", "spontaneous", "reckless"],
+            goals=["seek adventure", "help friends", "enjoy life"],
+            fears=["being trapped", "missing out on fun"],
+            abilities=["jump long distances", "make distracting noise", "escape quickly"],
+            relationships={"Ant": "friend", "Dove": "friend"},
+            state={"energetic": True, "cautious": False},
+            description=(
+                "A lively grasshopper who leaps into trouble as quickly as into celebration, "
+                "often helping friends with bold moves before thinking through the risk."
+            ),
+        ),
+        CharacterProfile(
+            name="Bee",
+            role="protector",
+            traits=["loyal", "alert", "hardworking"],
+            goals=["protect hive", "gather resources", "maintain order"],
+            fears=["threats to hive", "predators"],
+            abilities=["sting", "fly quickly", "communicate via dance"],
+            relationships={"Ant": "cautious ally", "Dove": "neutral"},
+            state={"alert": True, "busy": True},
+            description=(
+                "A disciplined bee that balances speed with duty, always watching for danger "
+                "while trying to keep the wider meadow safe and orderly."
+            ),
+        ),
     ]
 
     return FableDefinition(

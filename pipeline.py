@@ -94,6 +94,8 @@ class Pipeline:
                         completed_goal=completed_goal,
                         recent_story=story[-3:],
                         world_vars=world_after,
+                        character_context=self._build_character_context(characters),
+                        goal_history=list(world_after.get("goal_history", [active_goal])),
                     )
                     env.set_new_goal(new_goal)
                     rolled_world = env.get_world_vars()
@@ -124,3 +126,20 @@ class Pipeline:
     @staticmethod
     def _should_act_now(character_name: str, world_vars: dict, env: WorldProxyEnv) -> bool:
         return True
+
+    @staticmethod
+    def _build_character_context(characters: list[CharacterProfile]) -> list[dict[str, object]]:
+        context: list[dict[str, object]] = []
+        for profile in characters:
+            context.append(
+                {
+                    "name": profile.name,
+                    "role": profile.role,
+                    "traits": profile.traits,
+                    "goals": profile.goals,
+                    "abilities": profile.abilities,
+                    "relationships": profile.relationships,
+                    "state": profile.state,
+                }
+            )
+        return context
