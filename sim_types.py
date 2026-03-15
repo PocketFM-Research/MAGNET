@@ -42,6 +42,10 @@ class CharacterDecision:
     confidence: float
     revisions_used: int
     rationale: str
+    advances_goal: bool = False
+    goal_reached: bool = False
+    world_updates: dict[str, Any] = field(default_factory=dict)
+    progress_reason: str = ""
 
 @dataclass
 class StepResult:

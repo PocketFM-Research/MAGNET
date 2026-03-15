@@ -83,9 +83,11 @@ def build_critic_prompt(
 ) -> tuple[str, str]:
     system = (
         "You are a strict action critic. Decide whether the proposed action should be revised. "
-        "Focus on whether the action is non-redundant with previous actions, plausible in the current world, and consistent with the character's persona. "
-        "Revise when the action is vague, repetitive, out of character, implausible, or conflicts with world state. "
-        "Be conservative: approve only actions that are concrete, believable, and narratively coherent."
+        "Evaluate both action quality and whether the action plausibly advances the current story goal. "
+        "Focus on whether the action is specific, non-redundant with previous actions, plausible in the current world, "
+        "consistent with the character's persona, and materially relevant to the current goal. "
+        "Revise when the action is vague, repetitive, out of character, implausible, conflicts with world state, or does not advance the goal. "
+        "Be conservative: approve only actions that are concrete, believable, narratively coherent, and goal-relevant."
     )
     user = (
         f"TASK=critic\n"
@@ -93,9 +95,13 @@ def build_critic_prompt(
         f"Action: {action}\n"
         f"Final goal: {goal}\n"
         f"World variables: {json.dumps(world_vars, sort_keys=True)}\n"
-        "Reject actions that contradict persona, violate the established world, repeat recent state without adding anything new, or read as implausible filler.\n"
-        "Use feedback to demand a more concrete, less repetitive, more believable next action.\n"
-        "Return JSON keys: revise (boolean), confidence (0..1), feedback (string)."
+        "Reject actions that contradict persona, violate the established world, repeat recent state without adding anything new, "
+        "read as implausible filler, or fail to create credible goal progress.\n"
+        "If advances_goal=true and goal_reached=false, world_updates must include at least one concrete state change. "
+        "Do not write to reserved keys: turn, characters, fable_name, current_goal, goal_history.\n"
+        "Use feedback to demand a more concrete, less repetitive, more believable, more goal-relevant next action.\n"
+        "Return JSON keys: revise (boolean), advances_goal (boolean), goal_reached (boolean), "
+        "world_updates (object), confidence (0..1), feedback (string), reason (string)."
     )
     return system, user
 

@@ -41,34 +41,20 @@ class Pipeline:
                 query = f"goal={active_goal} world={world_before}"
                 memory_snippets = self.memory.retrieve(agent.profile.name, query=query, k=cfg.rag_k)
 
-                decision = None
-                progress_feedback = None
-                progress_revisions_used = 0
-
-                progress = None
-                while True:
-                    decision = agent.decide_action(
-                        goal=active_goal,
-                        world_vars=world_before,
-                        memory_snippets=memory_snippets,
-                        max_plan_revisions=cfg.max_plan_revisions,
-                        revision_feedback=progress_feedback,
-                    )
-                    progress = env.judge_action(
-                        decision.action.lower().strip(),
-                        actor=agent.profile.name.lower().strip(),
-                    )
-                    if bool(progress.get("advances_goal", False)) or progress_revisions_used >= cfg.max_plan_revisions:
-                        break
-                    progress_feedback = (
-                        "The environment judge said this action does not advance the current goal. "
-                        f"Reason: {str(progress.get('reason', '')).strip() or 'No reason provided.'} "
-                        "Revise toward a more goal-relevant next action while staying plausible and in character."
-                    )
-                    progress_revisions_used += 1
-
-                assert decision is not None
-                result = env.step(agent.profile.name, decision.action, progress=progress)
+                decision = agent.decide_action(
+                    goal=active_goal,
+                    world_vars=world_before,
+                    memory_snippets=memory_snippets,
+                    max_plan_revisions=cfg.max_plan_revisions,
+                )
+                result = env.step(
+                    agent.profile.name,
+                    decision.action,
+                    advances_goal=decision.advances_goal,
+                    goal_reached=decision.goal_reached,
+                    world_updates=decision.world_updates,
+                    progress_reason=decision.progress_reason,
+                )
                 world_after = env.get_world_vars()
 
                 self.memory.add(
@@ -86,7 +72,7 @@ class Pipeline:
                     (
                         f"t={step} goal={active_goal} actor={agent.profile.name} intent={decision.intent} "
                         f"action={decision.action} conf={decision.confidence:.2f} "
-                        f"rev={decision.revisions_used + progress_revisions_used} -> {result.event_text}"
+                        f"rev={decision.revisions_used} -> {result.event_text}"
                     )
                 )
                 story.append(

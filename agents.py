@@ -40,6 +40,10 @@ class CharacterAgent:
         action = "look around"
         confidence = 0.4
         rationale = "fallback"
+        advances_goal = False
+        goal_reached = False
+        world_updates: dict = {}
+        progress_reason = ""
 
         while True:
             action_sys, action_user = build_action_prompt(
@@ -57,14 +61,15 @@ class CharacterAgent:
             confidence = float(confidence_value) if isinstance(confidence_value, (int, float, str)) else 0.4
             rationale = str(action_resp.get("rationale", ""))
 
-            if max_plan_revisions <= 0:
-                revise = False
-                feedback = ""
-            else:
-                critic_sys, critic_user = build_critic_prompt(self.profile.name, action, goal, world_vars)
-                critic_resp = self.llm.complete_json(critic_sys, critic_user)
-                revise = bool(critic_resp.get("revise", False))
-                feedback = str(critic_resp.get("feedback", ""))
+            critic_sys, critic_user = build_critic_prompt(self.profile.name, action, goal, world_vars)
+            critic_resp = self.llm.complete_json(critic_sys, critic_user)
+            revise = bool(critic_resp.get("revise", False)) if max_plan_revisions > 0 else False
+            feedback = str(critic_resp.get("feedback", ""))
+            advances_goal = bool(critic_resp.get("advances_goal", False))
+            goal_reached = bool(critic_resp.get("goal_reached", False))
+            updates_raw = critic_resp.get("world_updates", {})
+            world_updates = updates_raw if isinstance(updates_raw, dict) else {}
+            progress_reason = str(critic_resp.get("reason", ""))
 
             if not revise or revisions_used >= max_plan_revisions:
                 break
@@ -76,6 +81,10 @@ class CharacterAgent:
             confidence=confidence,
             revisions_used=revisions_used,
             rationale=rationale,
+            advances_goal=advances_goal,
+            goal_reached=goal_reached,
+            world_updates=world_updates,
+            progress_reason=progress_reason,
         )
 
 

@@ -1,5 +1,4 @@
 from __future__ import annotations
-import json
 from typing import Any
 import networkx as nx
 from fables import FableDefinition, define_ant_and_dove_fable
@@ -43,27 +42,41 @@ class WorldProxyEnv:
                 world_vars[str(data["key"])] = data.get("value")
         return world_vars
 
-    def step(self, character: str, action: str, progress: dict[str, Any] | None = None) -> StepResult:
+    def step(
+        self,
+        character: str,
+        action: str,
+        advances_goal: bool = False,
+        goal_reached: bool = False,
+        world_updates: dict[str, Any] | None = None,
+        progress_reason: str = "",
+    ) -> StepResult:
         self._set_world_var("turn", int(self._get_world_var("turn", 0)) + 1)
-        actor = character.lower().strip()
         normalized_action = action.lower().strip()
-        return self._step_story(actor, character, normalized_action, action, progress=progress)
+        return self._step_story(
+            character=character,
+            action=normalized_action,
+            raw_action=action,
+            advances_goal=advances_goal,
+            goal_reached=goal_reached,
+            world_updates=world_updates,
+            progress_reason=progress_reason,
+        )
 
     def expected_actor(self) -> str | None:
         return None
 
     def _step_story(
         self,
-        actor: str,
         character: str,
         action: str,
         raw_action: str,
-        progress: dict[str, Any] | None = None,
+        advances_goal: bool = False,
+        goal_reached: bool = False,
+        world_updates: dict[str, Any] | None = None,
+        progress_reason: str = "",
     ) -> StepResult:
-        progress = progress if isinstance(progress, dict) else self.judge_action(action, actor=actor)
-        advances_goal = bool(progress.get("advances_goal", False))
-        goal_reached = bool(progress.get("goal_reached", False))
-        updates = progress.get("world_updates", {})
+        updates = world_updates if isinstance(world_updates, dict) else {}
         if not isinstance(updates, dict):
             updates = {}
 
@@ -88,7 +101,7 @@ class WorldProxyEnv:
                     "advances_goal": True,
                     "goal_completed": True,
                     "completed_goal": completed_goal,
-                    "progress_reason": str(progress.get("reason", "")),
+                    "progress_reason": progress_reason,
                 },
             )
 
@@ -100,7 +113,7 @@ class WorldProxyEnv:
                 info={
                     "goal_reached": False,
                     "advances_goal": True,
-                    "progress_reason": str(progress.get("reason", "")),
+                    "progress_reason": progress_reason,
                 },
             )
 
@@ -111,37 +124,9 @@ class WorldProxyEnv:
             info={
                 "goal_reached": False,
                 "advances_goal": False,
-                "progress_reason": str(progress.get("reason", "")),
+                "progress_reason": progress_reason,
             },
         )
-
-    def judge_action(self, action: str, actor: str) -> dict[str, Any]:
-        if self.llm is None:
-            return {"advances_goal": False, "goal_reached": False, "world_updates": {}}
-
-        system_prompt = (
-            "You are a strict story progression judge. "
-            "Given world state and one action, decide if the action plausibly progresses the story toward the final goal, "
-            "or fully achieves that final goal."
-            "Be conservative: approve only actions that progress the story substantially."
-        )
-        user_prompt = (
-            f"TASK=goal_judge\n"
-            f"Actor: {actor}\n"
-            f"Final goal: {self.get_current_goal()}\n"
-            f"World variables: {json.dumps(self.get_world_vars(), sort_keys=True)}\n"
-            f"Action: {action}\n"
-            "If advances_goal=true and goal_reached=false, world_updates must include at least one concrete state change. "
-            "Do not write to reserved keys: turn, characters, fable_name, current_goal, goal_history.\n"
-            "Return JSON keys: advances_goal (boolean), goal_reached (boolean), "
-            "world_updates (object), confidence (0..1), reason (string)."
-        )
-
-        try:
-            resp = self.llm.complete_json(system_prompt, user_prompt)
-        except Exception:
-            return {"advances_goal": False, "goal_reached": False, "world_updates": {}}
-        return resp if isinstance(resp, dict) else {"advances_goal": False, "goal_reached": False, "world_updates": {}}
 
     def _apply_world_updates(self, updates: dict[str, Any]) -> None:
         protected_keys = {"turn", "characters", "fable_name", "current_goal", "goal_history"}
