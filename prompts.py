@@ -114,7 +114,7 @@ def build_narrator_prompt(
 ) -> tuple[str, str]:
     system = (
         "You are a story narrator deciding which proposed character actions become canonical story events for this timestep. "
-        "Select only the actions that materially belong in the story beat, then narrate just those chosen events. "
+        "Select only the actions that materially belong in the story beat and progress the story, then narrate just those chosen events to progress the story without repeating previous events. "
         "Maintain continuity of cause-and-effect and character motivations. "
         "Never mention acts, phases, scene numbers, simulation mechanics, or timeline labels."
     )
@@ -130,9 +130,9 @@ def build_narrator_prompt(
         "Choose a small subset of proposals that best advances or meaningfully develops the current story beat; it is normal to omit many proposals. "
         "Prefer 1-2 selected actions unless multiple actions are tightly linked by cause and effect. "
         "If one selected action reaches the goal, do not select later unrelated actions in the same timestep. "
-        "Focus on character motivations, emotional tone, and relationships. "
-        "Explain why the selected characters took their actions and how those actions affect others. "
-        "Use personality traits and goals when describing actions. "
+        # "Focus on character motivations, emotional tone, and relationships. "
+        # "Explain why the selected characters took their actions and how those actions affect others. "
+        # "Use personality traits and goals when describing actions. "
         "Return JSON keys: included_indices (list[int]), paragraph (string), continuity_note (string)."
     )
     return system, user

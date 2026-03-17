@@ -98,16 +98,17 @@ class Pipeline:
             timeline.append(f"t={step} story={narrated_step.paragraph}")
             story.append(narrated_step.paragraph)
 
+            self.memory.add(
+                timestep=step,
+                characters=[decision.character for decision in selected_actions],
+                actions=[decision.action for decision in selected_actions],
+                narration=narrated_step.paragraph,
+                reward=step_reward,
+                world_before=world_before,
+                world_after=world_after,
+            )
+
             for decision, result in zip(selected_actions, results):
-                self.memory.add(
-                    timestep=step,
-                    character=decision.character,
-                    action=decision.action,
-                    narration=narrated_step.paragraph,
-                    reward=result.reward,
-                    world_before=world_before,
-                    world_after=world_after,
-                )
                 timeline.append(
                     (
                         f"t={step} canonical_actor={decision.character} action={decision.action} "

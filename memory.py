@@ -3,15 +3,14 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 from llama_index.core import Document, VectorStoreIndex
-from llama_index.core.vector_stores.types import FilterOperator, MetadataFilter, MetadataFilters
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
 
 @dataclass
 class MemoryEntry:
     timestep: int
-    character: str
-    action: str
+    characters: list[str]
+    actions: list[str]
     narration: str
     reward: float
     world_before: dict[str, Any]
@@ -31,8 +30,8 @@ class StructuredMemory:
     def add(
         self,
         timestep: int,
-        character: str,
-        action: str,
+        characters: list[str],
+        actions: list[str],
         narration: str,
         reward: float,
         world_before: dict[str, Any],
@@ -40,8 +39,8 @@ class StructuredMemory:
     ) -> None:
         entry = MemoryEntry(
             timestep=timestep,
-            character=character,
-            action=action,
+            characters=list(characters),
+            actions=list(actions),
             narration=narration,
             reward=reward,
             world_before=dict(world_before),
@@ -54,9 +53,9 @@ class StructuredMemory:
             text=_entry_to_doc_text(entry),
             metadata={
                 "entry_idx": entry_idx,
-                "character": entry.character,
                 "timestep": entry.timestep,
-                "action": entry.action,
+                "characters": entry.characters,
+                "actions": entry.actions,
                 "narration": entry.narration,
                 "reward": entry.reward,
             },
@@ -71,19 +70,8 @@ class StructuredMemory:
         if not self.entries or self._index is None or k <= 0:
             return []
 
-        filters = MetadataFilters(
-            filters=[
-                MetadataFilter(
-                    key="character",
-                    operator=FilterOperator.EQ,
-                    value=character,
-                )
-            ]
-        )
-
         retriever = self._index.as_retriever(
-            similarity_top_k=max(k * 3, k),
-            filters=filters,
+            similarity_top_k=max(k * 5, k),
         )
         nodes = retriever.retrieve(query)
         if not nodes:
@@ -105,6 +93,8 @@ class StructuredMemory:
 
             seen_entry_ids.add(entry_idx)
             entry = self.entries[entry_idx]
+            if character not in entry.characters:
+                continue
             base = float(node.score or 0.0)
             recency = entry.timestep / max_step
             reward_bonus = max(-1.0, min(1.0, entry.reward))
@@ -118,7 +108,8 @@ class StructuredMemory:
         top_entries = [self.entries[idx] for _, idx in rescored[:k]]
         return [
             (
-                f"t={entry.timestep} action={entry.action} reward={entry.reward:.2f} "
+                f"t={entry.timestep} characters={entry.characters} actions={entry.actions} "
+                f"reward={entry.reward:.2f} "
                 f"narration={entry.narration}"
             )
             for entry in top_entries
@@ -127,7 +118,7 @@ class StructuredMemory:
 
 def _entry_to_doc_text(entry: MemoryEntry) -> str:
     return (
-        f"character={entry.character} action={entry.action} narration={entry.narration} "
+        f"characters={entry.characters} actions={entry.actions} narration={entry.narration} "
         f"before={json.dumps(entry.world_before, sort_keys=True)} "
         f"after={json.dumps(entry.world_after, sort_keys=True)} "
         f"reward={entry.reward:.2f}"
