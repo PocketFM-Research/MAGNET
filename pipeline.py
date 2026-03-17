@@ -51,7 +51,7 @@ class Pipeline:
                 )
                 timeline.append(
                     (
-                        f"t={step} goal={active_goal} proposed_actor={agent.profile.name} intent={decision.intent} "
+                        f"t={step} goal={active_goal} proposed_actor={agent.profile.name} "
                         f"action={decision.action} conf={decision.confidence:.2f} "
                         f"rev={decision.revisions_used} advances_goal={decision.advances_goal} "
                         f"goal_reached={decision.goal_reached}"

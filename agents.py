@@ -3,7 +3,6 @@ from prompts import (
     build_action_prompt,
     build_critic_prompt,
     build_new_goal_prompt,
-    build_intent_prompt,
     build_narrator_prompt,
 )
 from sim_types import CharacterDecision, CharacterProfile, NarratedStep
@@ -23,18 +22,6 @@ class CharacterAgent:
         revision_feedback: str | None = None,
     ) -> CharacterDecision:
         persona = self.profile.persona_text()
-        intent_sys, intent_user = build_intent_prompt(
-            self.profile.name,
-            persona,
-            goal,
-            world_vars,
-            memory_snippets,
-        )
-        intent_resp = self.llm.complete_json(intent_sys, intent_user)
-        intent = str(intent_resp.get("intent", "advance the goal"))
-        constraints_raw = intent_resp.get("constraints", [])
-        constraints = [str(x) for x in constraints_raw] if isinstance(constraints_raw, list) else []
-
         revisions_used = 0
         feedback = revision_feedback
         action = "look around"
@@ -49,8 +36,7 @@ class CharacterAgent:
             action_sys, action_user = build_action_prompt(
                 self.profile.name,
                 persona,
-                intent,
-                constraints,
+                goal,
                 world_vars,
                 memory_snippets,
                 feedback,
@@ -78,7 +64,6 @@ class CharacterAgent:
         return CharacterDecision(
             character=self.profile.name,
             action=action,
-            intent=intent,
             confidence=confidence,
             revisions_used=revisions_used,
             rationale=rationale,
@@ -104,7 +89,6 @@ class NarratorAgent:
             {
                 "index": idx,
                 "character": proposal.character,
-                "intent": proposal.intent,
                 "action": proposal.action,
                 "confidence": proposal.confidence,
                 "rationale": proposal.rationale,

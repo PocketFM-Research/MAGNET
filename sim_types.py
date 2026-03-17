@@ -40,7 +40,6 @@ class CharacterProfile:
 class CharacterDecision:
     character: str
     action: str
-    intent: str
     confidence: float
     revisions_used: int
     rationale: str

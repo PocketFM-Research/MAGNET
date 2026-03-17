@@ -6,66 +6,39 @@ FEW_SHOT_ACTION_EXAMPLES = """
 Example 1
 Character persona: cautious medic trying to evacuate civilians.
 World variables: {"alarm_active": true, "exit_blocked": false, "goal_reached": false}
-Intent: move injured civilians toward safety without causing panic.
+Goal: move injured civilians toward safety without causing panic.
 Output JSON: {"action": "guide the two most injured civilians through the east corridor to the marked shelter door", "confidence": 0.9, "rationale": "It is concrete, immediately reduces danger, and creates measurable progress toward full evacuation."}
 
 Example 2
 Character persona: ambitious engineer under tight deadline pressure.
 World variables: {"prototype_failed": true, "time_remaining_hours": 3, "goal_reached": false}
-Intent: recover from failure and deliver a workable demo.
+Goal: recover from failure and deliver a workable demo.
 Output JSON: {"action": "replace the unstable sensor module with the tested backup and rerun the core demo sequence", "confidence": 0.92, "rationale": "This directly addresses the failure source and advances the story with a high-impact recovery step instead of stalling."}
 
 Example 3
 Character persona: community organizer who values trust and accountability.
 World variables: {"team_conflict_open": true, "resources_secured": false, "goal_reached": false}
-Intent: resolve internal conflict so the team can secure supplies.
+Goal: resolve internal conflict so the team can secure supplies.
 Output JSON: {"action": "hold a 10-minute mediation between the two lead volunteers and assign clear pickup roles before departure", "confidence": 0.89, "rationale": "It resolves a blocking conflict and enables immediate next actions tied to the final objective."}
 """.strip()
-
-
-def build_intent_prompt(
-    name: str,
-    persona: str,
-    goal: str,
-    world_vars: dict[str, Any],
-    memory_snippets: list[str],
-) -> tuple[str, str]:
-    system = (
-        "You are the intent planner for a character in a text simulation. "
-        "Use persona, goal, and current world state to produce the next high-level intent."
-    )
-    user = (
-        f"TASK=intent\n"
-        f"Character: {name}\n"
-        f"Persona: {persona}\n"
-        f"Goal: {goal}\n"
-        f"World variables: {json.dumps(world_vars, sort_keys=True)}\n"
-        f"Retrieved memory: {json.dumps(memory_snippets)}\n"
-        "Return JSON keys: intent (string), confidence (0..1), constraints (list[str])."
-    )
-    return system, user
-
-
 def build_action_prompt(
     name: str,
     persona: str,
-    intent: str,
-    constraints: list[str],
+    goal: str,
     world_vars: dict[str, Any],
     memory_snippets: list[str],
     revision_feedback: str | None,
 ) -> tuple[str, str]:
     system = (
         "You are the action generator. Output one concrete next action for the character. "
-        "Be concise, realistic, and consistent with world variables, persona, and the final story goal."
+        "Be concise, realistic, and consistent with world variables, persona, and the current story goal."
     )
     feedback_line = f"Revision feedback: {revision_feedback}\n" if revision_feedback else ""
     user = (
         f"TASK=action\n"
         f"Character: {name}\n"
         f"Persona: {persona}\n"
-        f"Intent: {intent}\n"
-        f"Constraints: {json.dumps(constraints)}\n"
+        f"Goal: {goal}\n"
         f"World variables: {json.dumps(world_vars, sort_keys=True)}\n"
         f"Retrieved memory: {json.dumps(memory_snippets)}\n"
         f"{feedback_line}"
@@ -93,7 +66,7 @@ def build_critic_prompt(
         f"TASK=critic\n"
         f"Character: {name}\n"
         f"Action: {action}\n"
-        f"Final goal: {goal}\n"
+        f"Story goal: {goal}\n"
         f"World variables: {json.dumps(world_vars, sort_keys=True)}\n"
         "Reject actions that contradict persona, violate the established world, repeat recent state without adding anything new, "
         "read as implausible filler, or fail to create credible goal progress.\n"
@@ -130,9 +103,6 @@ def build_narrator_prompt(
         "Choose a small subset of proposals that best advances or meaningfully develops the current story beat; it is normal to omit many proposals. "
         "Prefer 1-2 selected actions unless multiple actions are tightly linked by cause and effect. "
         "If one selected action reaches the goal, do not select later unrelated actions in the same timestep. "
-        # "Focus on character motivations, emotional tone, and relationships. "
-        # "Explain why the selected characters took their actions and how those actions affect others. "
-        # "Use personality traits and goals when describing actions. "
         "Return JSON keys: included_indices (list[int]), paragraph (string), continuity_note (string)."
     )
     return system, user
