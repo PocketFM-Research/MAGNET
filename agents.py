@@ -6,7 +6,7 @@ from prompts import (
     build_intent_prompt,
     build_narrator_prompt,
 )
-from sim_types import CharacterDecision, CharacterProfile
+from sim_types import CharacterDecision, CharacterProfile, NarratedStep
 
 
 class CharacterAgent:
@@ -76,6 +76,7 @@ class CharacterAgent:
             revisions_used += 1
 
         return CharacterDecision(
+            character=self.profile.name,
             action=action,
             intent=intent,
             confidence=confidence,
@@ -96,30 +97,58 @@ class NarratorAgent:
         self,
         story_goal: str,
         recent_story: list[str],
-        actor: str,
-        intent: str,
-        action: str,
-        event_text: str,
         world_before: dict,
-        world_after: dict,
-    ) -> str:
+        proposals: list[CharacterDecision],
+    ) -> NarratedStep:
+        proposal_payload = [
+            {
+                "index": idx,
+                "character": proposal.character,
+                "intent": proposal.intent,
+                "action": proposal.action,
+                "confidence": proposal.confidence,
+                "rationale": proposal.rationale,
+                "advances_goal": proposal.advances_goal,
+                "goal_reached": proposal.goal_reached,
+                "world_updates": proposal.world_updates,
+                "progress_reason": proposal.progress_reason,
+            }
+            for idx, proposal in enumerate(proposals)
+        ]
         narrator_sys, narrator_user = build_narrator_prompt(
             story_goal=story_goal,
             recent_story=recent_story,
-            actor=actor,
-            intent=intent,
-            action=action,
-            event_text=event_text,
             world_before=world_before,
-            world_after=world_after,
+            proposals=proposal_payload,
         )
         try:
             narrator_resp = self.llm.complete_json(narrator_sys, narrator_user)
         except Exception:
-            return event_text
+            paragraph = "; ".join(
+                f"{proposal.character} {proposal.action}" for proposal in proposals[:2]
+            ).strip()
+            return NarratedStep(
+                paragraph=paragraph or "Nothing noteworthy happened.",
+                included_indices=list(range(min(len(proposals), 2))),
+            )
 
+        included_raw = narrator_resp.get("included_indices", [])
+        included_indices = [
+            idx for idx in included_raw if isinstance(idx, int) and 0 <= idx < len(proposals)
+        ] if isinstance(included_raw, list) else []
         paragraph = str(narrator_resp.get("paragraph", "")).strip()
-        return paragraph or event_text
+        continuity_note = str(narrator_resp.get("continuity_note", "")).strip()
+        if not included_indices and proposals:
+            included_indices = [0]
+        if not paragraph and included_indices:
+            paragraph = "; ".join(
+                f"{proposals[idx].character} {proposals[idx].action}" for idx in included_indices
+            )
+        return NarratedStep(
+            paragraph=paragraph or "Nothing noteworthy happened.",
+            included_indices=included_indices,
+            continuity_note=continuity_note,
+        )
 
     def generate_next_goal(
         self,

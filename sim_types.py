@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+
 @dataclass
 class CharacterProfile:
     name: str
@@ -37,6 +38,7 @@ class CharacterProfile:
 
 @dataclass
 class CharacterDecision:
+    character: str
     action: str
     intent: str
     confidence: float
@@ -53,6 +55,14 @@ class StepResult:
     reward: float
     done: bool
     info: dict[str, Any]
+
+
+@dataclass
+class NarratedStep:
+    paragraph: str
+    included_indices: list[int] = field(default_factory=list)
+    continuity_note: str = ""
+
 
 @dataclass
 class SimulationState:

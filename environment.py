@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any
 import networkx as nx
 from fables import FableDefinition, define_ant_and_dove_fable
-from sim_types import StepResult
+from sim_types import CharacterDecision, StepResult
 
 
 class WorldProxyEnv:
@@ -62,6 +62,27 @@ class WorldProxyEnv:
             world_updates=world_updates,
             progress_reason=progress_reason,
         )
+
+    def step_selected_actions(self, selected_actions: list[CharacterDecision]) -> list[StepResult]:
+        if not selected_actions:
+            return []
+
+        self._set_world_var("turn", int(self._get_world_var("turn", 0)) + 1)
+        results: list[StepResult] = []
+        for decision in selected_actions:
+            result = self._step_story(
+                character=decision.character,
+                action=decision.action.lower().strip(),
+                raw_action=decision.action,
+                advances_goal=decision.advances_goal,
+                goal_reached=decision.goal_reached,
+                world_updates=decision.world_updates,
+                progress_reason=decision.progress_reason,
+            )
+            results.append(result)
+            if result.info.get("goal_completed"):
+                break
+        return results
 
     def expected_actor(self) -> str | None:
         return None

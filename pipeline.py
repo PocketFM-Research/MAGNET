@@ -33,9 +33,11 @@ class Pipeline:
         total_reward = 0.0
 
         for step in range(1, cfg.max_steps + 1):
+            world_before = env.get_world_vars()
+            active_goal = env.get_current_goal()
+            proposed_actions = []
+
             for agent in agents:
-                world_before = env.get_world_vars()
-                active_goal = env.get_current_goal()
                 if not self._should_act_now(agent.profile.name, world_before, env):
                     continue
                 query = f"goal={active_goal} world={world_before}"
@@ -47,72 +49,97 @@ class Pipeline:
                     memory_snippets=memory_snippets,
                     max_plan_revisions=cfg.max_plan_revisions,
                 )
-                result = env.step(
-                    agent.profile.name,
-                    decision.action,
-                    advances_goal=decision.advances_goal,
-                    goal_reached=decision.goal_reached,
-                    world_updates=decision.world_updates,
-                    progress_reason=decision.progress_reason,
+                timeline.append(
+                    (
+                        f"t={step} goal={active_goal} proposed_actor={agent.profile.name} intent={decision.intent} "
+                        f"action={decision.action} conf={decision.confidence:.2f} "
+                        f"rev={decision.revisions_used} advances_goal={decision.advances_goal} "
+                        f"goal_reached={decision.goal_reached}"
+                    )
                 )
-                world_after = env.get_world_vars()
+                proposed_actions.append(decision)
 
+            if not proposed_actions:
+                continue
+
+            narrated_step = narrator.narrate_step(
+                story_goal=active_goal,
+                recent_story=story[-3:],
+                world_before=world_before,
+                proposals=proposed_actions,
+            )
+
+            included_indices: list[int] = []
+            seen_indices: set[int] = set()
+            for idx in narrated_step.included_indices:
+                if idx in seen_indices:
+                    continue
+                seen_indices.add(idx)
+                included_indices.append(idx)
+
+            selected_actions = [proposed_actions[idx] for idx in included_indices]
+            for idx, decision in enumerate(selected_actions):
+                if decision.goal_reached:
+                    selected_actions = selected_actions[: idx + 1]
+                    break
+
+            if not selected_actions:
+                continue
+
+            results = env.step_selected_actions(selected_actions)
+            world_after = env.get_world_vars()
+            step_reward = sum(result.reward for result in results)
+            total_reward += step_reward
+
+            selected_summary = ", ".join(
+                f"{decision.character}: {decision.action}" for decision in selected_actions
+            )
+            timeline.append(f"t={step} narrator_selected={selected_summary}")
+            timeline.append(f"t={step} story={narrated_step.paragraph}")
+            story.append(narrated_step.paragraph)
+
+            for decision, result in zip(selected_actions, results):
                 self.memory.add(
                     timestep=step,
-                    character=agent.profile.name,
+                    character=decision.character,
                     action=decision.action,
-                    event_text=result.event_text,
+                    narration=narrated_step.paragraph,
                     reward=result.reward,
                     world_before=world_before,
                     world_after=world_after,
                 )
-
-                total_reward += result.reward
                 timeline.append(
                     (
-                        f"t={step} goal={active_goal} actor={agent.profile.name} intent={decision.intent} "
-                        f"action={decision.action} conf={decision.confidence:.2f} "
-                        f"rev={decision.revisions_used} -> {result.event_text}"
-                    )
-                )
-                story.append(
-                    narrator.narrate_step(
-                        story_goal=active_goal,
-                        recent_story=story[-3:],
-                        actor=agent.profile.name,
-                        intent=decision.intent,
-                        action=decision.action,
-                        event_text=result.event_text,
-                        world_before=world_before,
-                        world_after=world_after,
+                        f"t={step} canonical_actor={decision.character} action={decision.action} "
+                        f"-> {result.event_text}"
                     )
                 )
 
-                if result.info.get("goal_completed"):
-                    completed_goal = str(result.info.get("completed_goal", active_goal))
-                    new_goal = narrator.generate_next_goal(
-                        completed_goal=completed_goal,
-                        recent_story=story[-3:],
-                        world_vars=world_after,
-                        character_context=self._build_character_context(characters),
-                        goal_history=list(world_after.get("goal_history", [active_goal])),
-                    )
-                    env.set_new_goal(new_goal)
-                    rolled_world = env.get_world_vars()
-                    timeline.append(
-                        f"t={step} narrator=new_goal completed_goal={completed_goal} -> next_goal={new_goal}"
-                    )
-                    world_after = rolled_world
+            completed_result = next((result for result in results if result.info.get("goal_completed")), None)
+            if completed_result is not None:
+                completed_goal = str(completed_result.info.get("completed_goal", active_goal))
+                new_goal = narrator.generate_next_goal(
+                    completed_goal=completed_goal,
+                    recent_story=story[-3:],
+                    world_vars=world_after,
+                    character_context=self._build_character_context(characters),
+                    goal_history=list(world_after.get("goal_history", [active_goal])),
+                )
+                env.set_new_goal(new_goal)
+                world_after = env.get_world_vars()
+                timeline.append(
+                    f"t={step} narrator=new_goal completed_goal={completed_goal} -> next_goal={new_goal}"
+                )
 
-                if result.done:
-                    return {
-                        "done": True,
-                        "steps": step,
-                        "total_reward": total_reward,
-                        "world_vars": world_after,
-                        "timeline": timeline,
-                        "story": story,
-                    }
+            if any(result.done for result in results):
+                return {
+                    "done": True,
+                    "steps": step,
+                    "total_reward": total_reward,
+                    "world_vars": world_after,
+                    "timeline": timeline,
+                    "story": story,
+                }
 
         return {
             "done": False,

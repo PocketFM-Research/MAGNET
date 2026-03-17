@@ -109,15 +109,12 @@ def build_critic_prompt(
 def build_narrator_prompt(
     story_goal: str,
     recent_story: list[str],
-    actor: str,
-    intent: str,
-    action: str,
-    event_text: str,
+    proposals: list[dict[str, Any]],
     world_before: dict[str, Any],
-    world_after: dict[str, Any],
 ) -> tuple[str, str]:
     system = (
-        "You are a story narrator. Rewrite simulation events into a cohesive story while staying faithful to facts. "
+        "You are a story narrator deciding which proposed character actions become canonical story events for this timestep. "
+        "Select only the actions that materially belong in the story beat, then narrate just those chosen events. "
         "Maintain continuity of cause-and-effect and character motivations. "
         "Never mention acts, phases, scene numbers, simulation mechanics, or timeline labels."
     )
@@ -125,19 +122,18 @@ def build_narrator_prompt(
         "TASK=narrate_step\n"
         f"Story goal: {story_goal}\n"
         f"Recent story paragraphs: {json.dumps(recent_story)}\n"
-        f"Actor: {actor}\n"
-        f"Intent: {intent}\n"
-        f"Action: {action}\n"
-        f"Event text: {event_text}\n"
+        f"Proposed actions: {json.dumps(proposals, sort_keys=True)}\n"
         f"World before: {json.dumps(world_before, sort_keys=True)}\n"
-        f"World after: {json.dumps(world_after, sort_keys=True)}\n"
         "Write one paragraph (2-4 sentences) in plain past-tense prose. "
         "Do not use phrases like 'Act 1, Act 2, Act 3, ...', 'phase', 'stage', or 'timeline'. "
-        "Do not add facts that conflict with event text/world vars. "
+        "Do not add facts that conflict with the selected proposals or world vars. "
+        "Choose a small subset of proposals that best advances or meaningfully develops the current story beat; it is normal to omit many proposals. "
+        "Prefer 1-2 selected actions unless multiple actions are tightly linked by cause and effect. "
+        "If one selected action reaches the goal, do not select later unrelated actions in the same timestep. "
         "Focus on character motivations, emotional tone, and relationships. "
-        "Explain why the character took the action and how it affects others. "
+        "Explain why the selected characters took their actions and how those actions affect others. "
         "Use personality traits and goals when describing actions. "
-        "Return JSON keys: paragraph (string), continuity_note (string)."
+        "Return JSON keys: included_indices (list[int]), paragraph (string), continuity_note (string)."
     )
     return system, user
 

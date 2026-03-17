@@ -12,7 +12,7 @@ class MemoryEntry:
     timestep: int
     character: str
     action: str
-    event_text: str
+    narration: str
     reward: float
     world_before: dict[str, Any]
     world_after: dict[str, Any]
@@ -33,7 +33,7 @@ class StructuredMemory:
         timestep: int,
         character: str,
         action: str,
-        event_text: str,
+        narration: str,
         reward: float,
         world_before: dict[str, Any],
         world_after: dict[str, Any],
@@ -42,7 +42,7 @@ class StructuredMemory:
             timestep=timestep,
             character=character,
             action=action,
-            event_text=event_text,
+            narration=narration,
             reward=reward,
             world_before=dict(world_before),
             world_after=dict(world_after),
@@ -57,7 +57,7 @@ class StructuredMemory:
                 "character": entry.character,
                 "timestep": entry.timestep,
                 "action": entry.action,
-                "event_text": entry.event_text,
+                "narration": entry.narration,
                 "reward": entry.reward,
             },
         )
@@ -119,7 +119,7 @@ class StructuredMemory:
         return [
             (
                 f"t={entry.timestep} action={entry.action} reward={entry.reward:.2f} "
-                f"event={entry.event_text}"
+                f"narration={entry.narration}"
             )
             for entry in top_entries
         ]
@@ -127,7 +127,7 @@ class StructuredMemory:
 
 def _entry_to_doc_text(entry: MemoryEntry) -> str:
     return (
-        f"character={entry.character} action={entry.action} event={entry.event_text} "
+        f"character={entry.character} action={entry.action} narration={entry.narration} "
         f"before={json.dumps(entry.world_before, sort_keys=True)} "
         f"after={json.dumps(entry.world_after, sort_keys=True)} "
         f"reward={entry.reward:.2f}"

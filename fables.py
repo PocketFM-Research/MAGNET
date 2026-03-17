@@ -55,34 +55,34 @@ def define_ant_and_dove_fable() -> FableDefinition:
                 "while using patience and subtle traps to influence events without revealing itself too soon."
             ),
         ),
-        CharacterProfile(
-            name="Grasshopper",
-            role="companion",
-            traits=["optimistic", "spontaneous", "reckless"],
-            goals=["seek adventure", "help friends", "enjoy life"],
-            fears=["being trapped", "missing out on fun"],
-            abilities=["jump long distances", "make distracting noise", "escape quickly"],
-            relationships={"Ant": "friend", "Dove": "friend"},
-            state={"energetic": True, "cautious": False},
-            description=(
-                "A lively grasshopper who leaps into trouble as quickly as into celebration, "
-                "often helping friends with bold moves before thinking through the risk."
-            ),
-        ),
-        CharacterProfile(
-            name="Bee",
-            role="protector",
-            traits=["loyal", "alert", "hardworking"],
-            goals=["protect hive", "gather resources", "maintain order"],
-            fears=["threats to hive", "predators"],
-            abilities=["sting", "fly quickly", "communicate via dance"],
-            relationships={"Ant": "cautious ally", "Dove": "neutral"},
-            state={"alert": True, "busy": True},
-            description=(
-                "A disciplined bee that balances speed with duty, always watching for danger "
-                "while trying to keep the wider meadow safe and orderly."
-            ),
-        ),
+        # CharacterProfile(
+        #     name="Grasshopper",
+        #     role="companion",
+        #     traits=["optimistic", "spontaneous", "reckless"],
+        #     goals=["seek adventure", "help friends", "enjoy life"],
+        #     fears=["being trapped", "missing out on fun"],
+        #     abilities=["jump long distances", "make distracting noise", "escape quickly"],
+        #     relationships={"Ant": "friend", "Dove": "friend"},
+        #     state={"energetic": True, "cautious": False},
+        #     description=(
+        #         "A lively grasshopper who leaps into trouble as quickly as into celebration, "
+        #         "often helping friends with bold moves before thinking through the risk."
+        #     ),
+        # ),
+        # CharacterProfile(
+        #     name="Bee",
+        #     role="protector",
+        #     traits=["loyal", "alert", "hardworking"],
+        #     goals=["protect hive", "gather resources", "maintain order"],
+        #     fears=["threats to hive", "predators"],
+        #     abilities=["sting", "fly quickly", "communicate via dance"],
+        #     relationships={"Ant": "cautious ally", "Dove": "neutral"},
+        #     state={"alert": True, "busy": True},
+        #     description=(
+        #         "A disciplined bee that balances speed with duty, always watching for danger "
+        #         "while trying to keep the wider meadow safe and orderly."
+        #     ),
+        # ),
     ]
 
     return FableDefinition(
