@@ -1,5 +1,7 @@
+import json
 import os
 from datetime import datetime, timezone
+from networkx.readwrite import json_graph
 from environment import WorldProxyEnv
 from fables import get_fable_definition
 from pipeline import Config, Pipeline
@@ -20,12 +22,24 @@ def main() -> None:
         cfg=Config(goal=fable.goal, max_steps=15, max_plan_revisions=1, rag_k=2),
     )
 
+    graph_path = os.getenv("WORLD_GRAPH_OUTPUT_PATH", "final_world_graph.json")
+    graph_exported = False
+    try:
+        graph_data = json_graph.node_link_data(env.world_graph, edges="links")
+        with open(graph_path, "w", encoding="utf-8") as handle:
+            json.dump(graph_data, handle, indent=2)
+            handle.write("\n")
+        graph_exported = True
+    except OSError:
+        pass
+
     print(
         {
             "done": result["done"],
             "steps": result["steps"],
             "total_reward": result["total_reward"],
             "world_vars": result["world_vars"],
+            "world_graph_path": graph_path if graph_exported else None,
         }
     )
     print("--- timeline ---")
