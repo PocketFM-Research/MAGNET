@@ -30,14 +30,15 @@ def build_action_prompt(
     revision_feedback: str | None,
 ) -> tuple[str, str]:
     system = (
-        "You are the action generator. Output one concrete next action for the character. "
+        f"You are the action generator for {name}. "
+        f"Character persona: {persona} "
+        "Output one concrete next action for the character. "
         "Be concise, realistic, and consistent with world variables, persona, and the current story goal."
     )
     feedback_line = f"Revision feedback: {revision_feedback}\n" if revision_feedback else ""
     user = (
         f"TASK=action\n"
         f"Character: {name}\n"
-        f"Persona: {persona}\n"
         f"Goal: {goal}\n"
         f"World variables: {json.dumps(world_vars, sort_keys=True)}\n"
         f"Retrieved memory: {json.dumps(memory_snippets)}\n"
@@ -50,12 +51,15 @@ def build_action_prompt(
 
 def build_critic_prompt(
     name: str,
+    persona: str,
     action: str,
     goal: str,
     world_vars: dict[str, Any],
 ) -> tuple[str, str]:
     system = (
-        "You are a strict action critic. Decide whether the proposed action should be revised. "
+        f"You are a strict action critic for {name}. "
+        f"Character persona: {persona} "
+        "Decide whether the proposed action should be revised. "
         "Evaluate both action quality and whether the action plausibly advances the current story goal. "
         "Focus on whether the action is specific, non-redundant with previous actions, plausible in the current world, "
         "consistent with the character's persona, and materially relevant to the current goal. "
