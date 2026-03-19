@@ -27,6 +27,9 @@ def build_action_prompt(
     goal: str,
     world_vars: dict[str, Any],
     memory_snippets: list[str],
+    world_knowledge: list[str],
+    last_scene_summary: str,
+    previous_scene_summary: str,
     revision_feedback: str | None,
 ) -> tuple[str, str]:
     system = (
@@ -40,10 +43,17 @@ def build_action_prompt(
         f"TASK=action\n"
         f"Character: {name}\n"
         f"Goal: {goal}\n"
-        f"World variables: {json.dumps(world_vars, sort_keys=True)}\n"
-        f"Retrieved memory: {json.dumps(memory_snippets)}\n"
+        # f"World variables: {json.dumps(world_vars, sort_keys=True)}\n"
+        # f"Retrieved memory: {json.dumps(memory_snippets)}\n" 
+        "World knowledge:\n"
+        f"You know: {json.dumps(world_knowledge)}\n"
+        "\n"
+        "Recent history:\n"
+        f"Last scene: {last_scene_summary}\n"
+        f"Scene before that: {previous_scene_summary}\n\n"
         f"{feedback_line}"
-        f"Few-shot examples:\n{FEW_SHOT_ACTION_EXAMPLES}\n"
+        # f"Few-shot examples:\n{FEW_SHOT_ACTION_EXAMPLES}\n"
+        "\n"
         "Return JSON keys: action (string), confidence (0..1), rationale (string)."
     )
     return system, user
@@ -57,9 +67,7 @@ def build_critic_prompt(
     world_vars: dict[str, Any],
 ) -> tuple[str, str]:
     system = (
-        f"You are a strict action critic for {name}. "
-        f"Character persona: {persona} "
-        "Decide whether the proposed action should be revised. "
+        "You are a strict action critic. Decide whether the proposed action should be revised. "
         "Evaluate both action quality and whether the action plausibly advances the current story goal. "
         "Focus on whether the action is specific, non-redundant with previous actions, plausible in the current world, "
         "consistent with the character's persona, and materially relevant to the current goal. "
@@ -69,6 +77,7 @@ def build_critic_prompt(
     user = (
         f"TASK=critic\n"
         f"Character: {name}\n"
+        f"Character persona: {persona}\n"
         f"Action: {action}\n"
         f"Story goal: {goal}\n"
         f"World variables: {json.dumps(world_vars, sort_keys=True)}\n"

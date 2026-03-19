@@ -18,10 +18,13 @@ class CharacterAgent:
         goal: str,
         world_vars: dict,
         memory_snippets: list[str],
+        recent_story: list[str],
         max_plan_revisions: int,
         revision_feedback: str | None = None,
     ) -> CharacterDecision:
         persona = self.profile.persona_text()
+        world_knowledge = self._build_world_knowledge(world_vars)
+        last_scene_summary, previous_scene_summary = self._build_recent_history(recent_story)
         revisions_used = 0
         feedback = revision_feedback
         action = "look around"
@@ -39,6 +42,9 @@ class CharacterAgent:
                 goal,
                 world_vars,
                 memory_snippets,
+                world_knowledge,
+                last_scene_summary,
+                previous_scene_summary,
                 feedback,
             )
             action_resp = self.llm.complete_json(action_sys, action_user)
@@ -78,6 +84,74 @@ class CharacterAgent:
             world_updates=world_updates,
             progress_reason=progress_reason,
         )
+
+    def _build_world_knowledge(self, world_vars: dict) -> list[str]:
+        facts: list[str] = []
+        seen_keys: set[str] = set()
+        ignored_keys = {
+            "characters",
+            "current_goal",
+            "fable_name",
+            "goal_history",
+            "goal_reached",
+            "progress_count",
+            "turn",
+        }
+
+        lowered_name = self.profile.name.lower()
+        for key in sorted(world_vars):
+            if key in seen_keys or len(facts) >= 5:
+                continue
+            if key in ignored_keys:
+                continue
+            value = world_vars[key]
+            value_text = str(value).lower()
+            key_text = key.lower()
+            if lowered_name in key_text or lowered_name in value_text:
+                facts.append(f"{key}={world_vars[key]}")
+                seen_keys.add(key)
+
+        for key in sorted(world_vars):
+            if key in seen_keys or len(facts) >= 5:
+                continue
+            if key in ignored_keys:
+                continue
+            value = world_vars[key]
+            key_text = key.lower()
+            value_text = str(value).lower()
+            if any(token in key_text for token in ("action", "event", "actor", "status", "state")):
+                facts.append(f"{key}={world_vars[key]}")
+                seen_keys.add(key)
+                continue
+            if any(name.lower() in value_text for name in self.profile.relationships) or self.profile.name.lower() in value_text:
+                facts.append(f"{key}={world_vars[key]}")
+                seen_keys.add(key)
+
+        for key in sorted(world_vars):
+            if key in seen_keys or len(facts) >= 5:
+                continue
+            if key in ignored_keys:
+                continue
+            value = world_vars[key]
+            if isinstance(value, str) and value.strip():
+                facts.append(f"{key}={value}")
+                seen_keys.add(key)
+
+        if not facts:
+            facts.append("No relevant character events are currently known.")
+
+        return facts[:5]
+
+    @staticmethod
+    def _build_recent_history(recent_story: list[str]) -> tuple[str, str]:
+        if not recent_story:
+            return "No prior scene has been narrated yet.", "No earlier scene is available."
+
+        last_scene = recent_story[-1].strip() or "No details available."
+        previous_scene = recent_story[-2].strip() if len(recent_story) > 1 else "No earlier scene is available."
+        if not previous_scene:
+            previous_scene = "No details available."
+        return last_scene, previous_scene
 
 
 class NarratorAgent:

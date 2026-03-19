@@ -10,7 +10,7 @@ def main() -> None:
     if not os.getenv("GEMINI_API_KEY"):
         raise RuntimeError("GEMINI_API_KEY is required.")
 
-    fable_name = os.getenv("FABLE_NAME", "ant_and_dove")
+    fable_name = os.getenv("FABLE_NAME", "maya story")
     fable = get_fable_definition(fable_name)
     characters = fable.characters
 

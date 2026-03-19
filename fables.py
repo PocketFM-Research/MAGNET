@@ -98,8 +98,104 @@ def define_ant_and_dove_fable() -> FableDefinition:
     )
 
 
+def define_corner_store_fable() -> FableDefinition:
+    characters = [
+        CharacterProfile(
+            name="Maya",
+            role="shop owner",
+            traits=["guarded", "funny", "responsible"],
+            goals=["protect her routines", "be honest about what she wants", "avoid another failed relationship"],
+            fears=["misreading Omar", "upending her life for the wrong person"],
+            abilities=["read people well", "keep conversations gentle", "notice small changes in others"],
+            relationships={
+                "Rafael": "father who wants her to stop hiding behind work",
+                "Leah": "best friend who sees through her defenses",
+                "Omar": "longtime neighbor she may already be in love with",
+            },
+            state={"at_store": True, "guarded": True, "hopeful": False},
+            description=(
+                "A 29-year-old woman who has spent so long keeping the corner store and her family together "
+                "that she no longer trusts herself to want anything more personal."
+            ),
+        ),
+        CharacterProfile(
+            name="Rafael",
+            role="father",
+            traits=["warm", "perceptive", "old-fashioned"],
+            goals=["see Maya build a life beyond work", "keep family ties honest", "nudge without controlling"],
+            fears=["watching Maya settle for loneliness", "saying too much too soon"],
+            abilities=["put people at ease", "notice emotional subtext", "offer advice without preaching"],
+            relationships={
+                "Maya": "daughter he loves and worries is holding back",
+                "Leah": "trusted family friend",
+                "Omar": "young man he quietly approves of",
+            },
+            state={"at_store": True, "watchful": True},
+            description=(
+                "A widower in his sixties who has learned that love often shows up as patience, timing, and "
+                "the courage to say one truthful thing at the right moment."
+            ),
+        ),
+        CharacterProfile(
+            name="Leah",
+            role="friend",
+            traits=["witty", "direct", "loyal"],
+            goals=["push Maya to be honest", "keep the friendship balanced", "prevent regret from masquerading as caution"],
+            fears=["watching Maya miss her chance", "becoming the friend who meddles too hard"],
+            abilities=["ask hard questions kindly", "lighten tense moments", "spot mutual attraction quickly"],
+            relationships={
+                "Maya": "best friend who needs occasional shoving",
+                "Rafael": "father figure she respects",
+                "Omar": "friend she trusts but teases relentlessly",
+            },
+            state={"available": True, "suspicious_of_chemistry": True},
+            description=(
+                "A public school counselor who has known both Maya and Omar for years and is tired of watching "
+                "them confuse caution with maturity."
+            ),
+        ),
+        CharacterProfile(
+            name="Omar",
+            role="neighbor",
+            traits=["steady", "reserved", "deeply reliable"],
+            goals=["tell Maya how he feels", "make the right choice about a job offer", "avoid pressuring her"],
+            fears=["damaging their friendship", "leaving without saying what mattered"],
+            abilities=["listen carefully", "show care through practical help", "stay calm under emotional pressure"],
+            relationships={
+                "Maya": "neighbor and closest friend he has quietly loved for years",
+                "Rafael": "older mentor",
+                "Leah": "friend who knows more than he says aloud",
+            },
+            state={"available": True, "job_offer_pending": True, "ready_to_leave": False},
+            description=(
+                "A building superintendent from two doors down who rarely speaks dramatically, but whose care "
+                "for Maya has become impossible to hide now that he may leave the neighborhood."
+            ),
+        ),
+    ]
+
+    return FableDefinition(
+        name="corner_store_last_week",
+        goal="Maya must decide whether to risk a real romance with Omar before he gives an answer on a job offer that would take him away.",
+        characters=characters,
+        initial_world_vars={
+            "goal_reached": False,
+            "setting": "A neighborhood corner store and the apartments above it during one emotionally tense week.",
+            "job_offer_deadline_days": 6,
+            "shared_history": "Maya and Omar have spent years circling around feelings neither of them has named plainly.",
+            "current_tension": "Omar has a stable out-of-state job offer, and Maya has just realized losing him would feel personal, not merely practical.",
+            "community_mood": "close-knit, observant, and aware that something unspoken is finally coming to a head",
+        },
+        progress_reward=0.5,
+        fallback_reward=0.0,
+        completion_key="goal_reached",
+    )
+
+
 def get_fable_definition(name: str) -> FableDefinition:
     key = name.lower().strip()
-    if key in {"ant_and_dove", "the_ant_and_the_dove", "ant-dove"}:
+    if key in {"ant_and_dove"}:
         return define_ant_and_dove_fable()
+    if key in {"maya story"}:
+        return define_corner_store_fable()
     raise ValueError(f"Unknown fable definition '{name}'.")
