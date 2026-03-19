@@ -63,7 +63,7 @@ For each timestep:
 
 ## World Model
 
-[`WorldProxyEnv`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/environment.py) stores the world in a directed graph with:
+[`environment.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/environment.py) stores the world in a directed graph with:
 
 - one `world` node
 - one node per character
