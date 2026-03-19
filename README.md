@@ -122,12 +122,6 @@ Characters:
 - Python 3.10+
 - a valid `GEMINI_API_KEY`
 
-Dependencies are listed in [`requirements.txt`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/requirements.txt):
-
-- `networkx`
-- `llama-index-core`
-- `llama-index-embeddings-huggingface`
-
 ## Setup
 
 ```bash
