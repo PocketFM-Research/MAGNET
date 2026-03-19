@@ -181,7 +181,7 @@ def define_corner_store_fable() -> FableDefinition:
         initial_world_vars={
             "goal_reached": False,
             "setting": "A neighborhood corner store and the apartments above it during one emotionally tense week.",
-            "job_offer_deadline_days": 6,
+            "job_offer_deadline_days": 6, 
             "shared_history": "Maya and Omar have spent years circling around feelings neither of them has named plainly.",
             "current_tension": "Omar has a stable out-of-state job offer, and Maya has just realized losing him would feel personal, not merely practical.",
             "community_mood": "close-knit, observant, and aware that something unspoken is finally coming to a head",
