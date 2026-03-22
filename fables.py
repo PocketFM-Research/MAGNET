@@ -192,10 +192,102 @@ def define_corner_store_fable() -> FableDefinition:
     )
 
 
+def define_flood_rescue_fable() -> FableDefinition:
+    characters = [
+        CharacterProfile(
+            name="Elena",
+            role="fire captain",
+            traits=["decisive", "calm", "protective"],
+            goals=["get everyone off the bridge alive", "keep her team moving", "make fast choices without wasting effort"],
+            fears=["losing civilians to hesitation", "sending her crew into a collapse"],
+            abilities=["lead rescues", "read structural danger", "coordinate under pressure"],
+            relationships={
+                "Nico": "trusted rescue swimmer",
+                "Priya": "dispatcher she relies on for timing and updates",
+                "Marcus": "civilian bus driver she needs to keep focused",
+            },
+            state={"on_scene": True, "injured": False, "commanding": True},
+            description=(
+                "A fire captain who has learned that in a fast-moving emergency, clarity matters as much as courage."
+            ),
+        ),
+        CharacterProfile(
+            name="Nico",
+            role="rescue swimmer",
+            traits=["brave", "fast", "practical"],
+            goals=["reach stranded civilians before the current does", "support Elena's plan", "minimize preventable risk"],
+            fears=["being pinned by debris", "arriving seconds too late"],
+            abilities=["swim strong currents", "handle ropes", "carry injured people through water"],
+            relationships={
+                "Elena": "captain he trusts completely",
+                "Priya": "voice in his earpiece keeping him aligned",
+                "Marcus": "civilian he may need to physically extract",
+            },
+            state={"suited_up": True, "ready": True},
+            description=(
+                "A rescue specialist who acts first with his hands and feet, then catches up with words later."
+            ),
+        ),
+        CharacterProfile(
+            name="Priya",
+            role="dispatcher",
+            traits=["focused", "precise", "steady"],
+            goals=["track flood changes", "route support efficiently", "keep the field team ahead of the danger"],
+            fears=["missing a critical update", "giving stale information"],
+            abilities=["monitor emergency channels", "map routes quickly", "spot timing windows"],
+            relationships={
+                "Elena": "field commander she feeds information to",
+                "Nico": "rescuer she keeps supplied with updates",
+                "Marcus": "civilian caller she is trying to stabilize",
+            },
+            state={"at_command_post": True, "comms_clear": True},
+            description=(
+                "An emergency dispatcher who turns chaos into usable timing, distances, and decisions."
+            ),
+        ),
+        CharacterProfile(
+            name="Marcus",
+            role="bus driver",
+            traits=["responsible", "shaken", "stubborn"],
+            goals=["keep the children on his bus safe", "help the rescuers without panicking", "avoid abandoning anyone"],
+            fears=["the bridge giving way", "making the wrong call under pressure"],
+            abilities=["move people in orderly lines", "stay with frightened passengers", "follow instructions when they are clear"],
+            relationships={
+                "Elena": "rescuer he is trying to trust",
+                "Nico": "last line between the passengers and the river",
+                "Priya": "voice on the radio guiding him through each minute",
+            },
+            state={"stranded": True, "injured": False, "responsible_for_children": True},
+            description=(
+                "A city bus driver trapped mid-route on a flooded bridge with children aboard and no room for mistakes."
+            ),
+        ),
+    ]
+
+    return FableDefinition(
+        name="flood_rescue_night",
+        goal="Elena and her team must get the stranded bus passengers off the flooded bridge before the structure gives way.",
+        characters=characters,
+        initial_world_vars={
+            "goal_reached": False,
+            "setting": "A river bridge on the edge of town during a flash flood at night.",
+            "bridge_state": "The bridge is taking damage from fast water and floating debris.",
+            "passenger_state": "A city bus with children on board is stranded near the center span.",
+            "weather": "Heavy rain, poor visibility, and rising water.",
+            "time_pressure": "The current is strengthening and the safe rescue window is closing quickly.",
+        },
+        progress_reward=0.5,
+        fallback_reward=0.0,
+        completion_key="goal_reached",
+    )
+
+
 def get_fable_definition(name: str) -> FableDefinition:
     key = name.lower().strip()
-    if key in {"ant_and_dove"}:
+    if key in {"ant_and_dove", "the_ant_and_the_dove", "ant-dove"}:
         return define_ant_and_dove_fable()
-    if key in {"maya story"}:
+    if key in {"corner_store_last_week", "corner_store", "maya_story", "maya store", "maya story"}:
         return define_corner_store_fable()
+    if key in {"flood_rescue_night", "flood_rescue", "rescue_story", "action_story"}:
+        return define_flood_rescue_fable()
     raise ValueError(f"Unknown fable definition '{name}'.")
