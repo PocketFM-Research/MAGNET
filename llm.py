@@ -1,10 +1,11 @@
 from __future__ import annotations
 import json
 import os
+import re
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from typing import Any
-from urllib import request
+from urllib import error, request
 
 class LLMError(RuntimeError):
     pass
@@ -43,24 +44,25 @@ class GeminiLLM:
             },
         )
 
-        with request.urlopen(req, timeout=self.timeout_seconds) as resp:
-            raw = resp.read().decode("utf-8")
+        try:
+            with request.urlopen(req, timeout=self.timeout_seconds) as resp:
+                raw = resp.read().decode("utf-8")
+        except error.HTTPError as exc:
+            raw = exc.read().decode("utf-8", errors="replace")
+            raise LLMError(self._build_http_error_message(exc.code, raw)) from exc
 
         parsed = json.loads(raw)
         candidates = parsed.get("candidates")
         if not isinstance(candidates, list) or not candidates:
-            raise LLMError("Invalid Gemini response: missing candidates.")
+            raise LLMError(self._build_invalid_response_message(parsed, "missing candidates"))
 
-        parts = candidates[0].get("content", {}).get("parts", [])
-        if not isinstance(parts, list) or not parts:
-            raise LLMError("Invalid Gemini response: missing content parts.")
-
-        content = parts[0].get("text")
-        if not isinstance(content, str):
-            raise LLMError("Invalid Gemini response: missing text content.")
+        candidate = candidates[0] if isinstance(candidates[0], dict) else {}
+        content = self._extract_text_from_candidate(candidate)
+        if content is None:
+            raise LLMError(self._build_invalid_response_message(parsed, "missing text content"))
 
         self._append_output_log(system_prompt, user_prompt, content)
-        return json.loads(content)
+        return self._parse_json_object(content)
 
     def _append_output_log(self, system_prompt: str, user_prompt: str, content: str) -> None:
         if not self.output_log_path:
@@ -82,6 +84,79 @@ class GeminiLLM:
                 handle.write(block)
         except OSError:
             pass
+
+    @staticmethod
+    def _parse_json_object(content: str) -> dict[str, Any]:
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError as exc:
+            repaired = GeminiLLM._repair_json_text(content)
+            if repaired != content:
+                try:
+                    parsed = json.loads(repaired)
+                except json.JSONDecodeError:
+                    raise LLMError(f"Gemini returned non-JSON content: {content[:300]}") from exc
+            else:
+                raise LLMError(f"Gemini returned non-JSON content: {content[:300]}") from exc
+
+        if not isinstance(parsed, dict):
+            raise LLMError(f"Gemini returned JSON that was not an object: {type(parsed).__name__}")
+        return parsed
+
+    @staticmethod
+    def _repair_json_text(content: str) -> str:
+        repaired = content.strip()
+        repaired = re.sub(r"^```(?:json)?\s*", "", repaired)
+        repaired = re.sub(r"\s*```$", "", repaired)
+        repaired = re.sub(r'([,{]\s*)""([A-Za-z0-9_]+)"\s*:', r'\1"\2":', repaired)
+        return repaired
+
+    @staticmethod
+    def _extract_text_from_candidate(candidate: dict[str, Any]) -> str | None:
+        content_obj = candidate.get("content", {})
+        parts = content_obj.get("parts", []) if isinstance(content_obj, dict) else []
+        if not isinstance(parts, list):
+            return None
+
+        text_parts: list[str] = []
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            text = part.get("text")
+            if isinstance(text, str) and text.strip():
+                text_parts.append(text)
+        if not text_parts:
+            return None
+        return "".join(text_parts)
+
+    @staticmethod
+    def _build_http_error_message(status_code: int, raw: str) -> str:
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            snippet = raw[:300].strip()
+            return f"Gemini HTTP {status_code}: {snippet or 'empty response body'}"
+
+        return GeminiLLM._build_invalid_response_message(parsed, f"HTTP {status_code}")
+
+    @staticmethod
+    def _build_invalid_response_message(parsed: dict[str, Any], prefix: str) -> str:
+        prompt_feedback = parsed.get("promptFeedback")
+        candidates = parsed.get("candidates")
+        candidate = candidates[0] if isinstance(candidates, list) and candidates else {}
+        finish_reason = candidate.get("finishReason") if isinstance(candidate, dict) else None
+        safety_ratings = candidate.get("safetyRatings") if isinstance(candidate, dict) else None
+
+        details: list[str] = []
+        if finish_reason:
+            details.append(f"finishReason={finish_reason}")
+        if prompt_feedback:
+            details.append(f"promptFeedback={json.dumps(prompt_feedback, ensure_ascii=True)}")
+        if safety_ratings:
+            details.append(f"safetyRatings={json.dumps(safety_ratings, ensure_ascii=True)}")
+
+        detail_suffix = f" ({'; '.join(details)})" if details else ""
+        return f"Invalid Gemini response: {prefix}{detail_suffix}."
 
 
 def build_default_llm() -> GeminiLLM:
