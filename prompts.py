@@ -2,25 +2,6 @@ from __future__ import annotations
 import json
 from typing import Any
 
-FEW_SHOT_ACTION_EXAMPLES = """
-Example 1
-Character persona: cautious medic trying to evacuate civilians.
-World variables: {"alarm_active": true, "exit_blocked": false, "goal_reached": false}
-Goal: move injured civilians toward safety without causing panic.
-Output JSON: {"action": "guide the two most injured civilians through the east corridor to the marked shelter door", "confidence": 0.9, "rationale": "It is concrete, immediately reduces danger, and creates measurable progress toward full evacuation."}
-
-Example 2
-Character persona: ambitious engineer under tight deadline pressure.
-World variables: {"prototype_failed": true, "time_remaining_hours": 3, "goal_reached": false}
-Goal: recover from failure and deliver a workable demo.
-Output JSON: {"action": "replace the unstable sensor module with the tested backup and rerun the core demo sequence", "confidence": 0.92, "rationale": "This directly addresses the failure source and advances the story with a high-impact recovery step instead of stalling."}
-
-Example 3
-Character persona: community organizer who values trust and accountability.
-World variables: {"team_conflict_open": true, "resources_secured": false, "goal_reached": false}
-Goal: resolve internal conflict so the team can secure supplies.
-Output JSON: {"action": "hold a 10-minute mediation between the two lead volunteers and assign clear pickup roles before departure", "confidence": 0.89, "rationale": "It resolves a blocking conflict and enables immediate next actions tied to the final objective."}
-""".strip()
 def build_action_prompt(
     name: str,
     persona: str,
@@ -28,8 +9,7 @@ def build_action_prompt(
     world_vars: dict[str, Any],
     memory_snippets: list[str],
     world_knowledge: list[str],
-    last_scene_summary: str,
-    previous_scene_summary: str,
+    recent_scene_summaries: list[str],
     revision_feedback: str | None,
 ) -> tuple[str, str]:
     system = (
@@ -39,6 +19,10 @@ def build_action_prompt(
         "Be concise, realistic, and consistent with world variables, persona, and the current story goal."
     )
     feedback_line = f"Revision feedback: {revision_feedback}\n" if revision_feedback else ""
+    history_lines = "\n".join(
+        f"Recent scene {idx + 1}: {summary}"
+        for idx, summary in enumerate(recent_scene_summaries)
+    )
     user = (
         f"TASK=action\n"
         f"Character: {name}\n"
@@ -49,10 +33,8 @@ def build_action_prompt(
         f"You know: {json.dumps(world_knowledge)}\n"
         "\n"
         "Recent history:\n"
-        f"Last scene: {last_scene_summary}\n"
-        f"Scene before that: {previous_scene_summary}\n\n"
+        f"{history_lines}\n\n"
         f"{feedback_line}"
-        # f"Few-shot examples:\n{FEW_SHOT_ACTION_EXAMPLES}\n"
         "\n"
         "Return JSON keys: action (string), confidence (0..1), rationale (string)."
     )
@@ -100,8 +82,10 @@ def build_narrator_prompt(
 ) -> tuple[str, str]:
     system = (
         "You are a story narrator deciding which proposed character actions become canonical story events for this timestep. "
-        "Select only the actions that materially belong in the story beat and progress the story, then narrate just those chosen events to progress the story without repeating previous events. "
-        "Maintain continuity of cause-and-effect and character motivations. "
+        "Select only the actions that materially belong in the story beat and turn them into a coherent scene, not a stitched summary of moves. "
+        "Maintain continuity of cause-and-effect, spatial logic, character motivations, and the physical setting. "
+        "Use the world state to keep the environment vivid and specific when it matters, including believable setting pressure, movement, obstacles, or changes in conditions. "
+        "You may add small connective narration or grounded setting detail if it is strongly supported by the selected proposals and world vars, but do not invent major new events. "
         "Never mention acts, phases, scene numbers, simulation mechanics, or timeline labels."
     )
     user = (
@@ -110,11 +94,15 @@ def build_narrator_prompt(
         f"Recent story paragraphs: {json.dumps(recent_story)}\n"
         f"Proposed actions: {json.dumps(proposals, sort_keys=True)}\n"
         f"World before: {json.dumps(world_before, sort_keys=True)}\n"
-        "Write one paragraph (2-4 sentences) in plain past-tense prose. "
+        "Write one paragraph (3-5 sentences) in plain past-tense prose. "
+        "The paragraph should feel like a real scene unfolding beat by beat, with actions influencing one another inside a clear setting. "
+        "Use specific physical context from the world state when helpful, so the reader can tell where the characters are and what is changing around them. "
+        "It is fine to briefly mention environmental developments, pressure, or visible consequences if they naturally follow from the selected actions and existing world vars. "
+        "Do not merely list what each character did one after another. Build a natural flow with transitions, reactions, and consequences. "
         "Do not use phrases like 'Act 1, Act 2, Act 3, ...', 'phase', 'stage', or 'timeline'. "
         "Do not add facts that conflict with the selected proposals or world vars. "
         "Choose a small subset of proposals that best advances or meaningfully develops the current story beat; it is normal to omit many proposals. "
-        "Prefer 1-2 selected actions unless multiple actions are tightly linked by cause and effect. "
+        "Prefer 1-2 selected actions unless multiple actions are tightly linked by cause and effect or are needed to make the scene readable. "
         "If one selected action reaches the goal, do not select later unrelated actions in the same timestep. "
         "Return JSON keys: included_indices (list[int]), paragraph (string), continuity_note (string)."
     )

@@ -198,9 +198,9 @@ def define_flood_rescue_fable() -> FableDefinition:
             name="Elena",
             role="fire captain",
             traits=["decisive", "calm", "protective"],
-            goals=["get everyone off the bridge alive", "keep her team moving", "make fast choices without wasting effort"],
-            fears=["losing civilians to hesitation", "sending her crew into a collapse"],
-            abilities=["lead rescues", "read structural danger", "coordinate under pressure"],
+            goals=["get every passenger out of the stranded bus alive", "build a stable rescue line before the water rises higher", "make fast choices without wasting effort"],
+            fears=["losing civilians to hesitation", "sending her crew into water she cannot control"],
+            abilities=["lead rescues", "size up flood hazards", "coordinate under pressure"],
             relationships={
                 "Nico": "trusted rescue swimmer",
                 "Priya": "dispatcher she relies on for timing and updates",
@@ -208,15 +208,15 @@ def define_flood_rescue_fable() -> FableDefinition:
             },
             state={"on_scene": True, "injured": False, "commanding": True},
             description=(
-                "A fire captain who has learned that in a fast-moving emergency, clarity matters as much as courage."
+                "A fire captain who has handled flood calls before and knows that the first clear plan often decides who lives."
             ),
         ),
         CharacterProfile(
             name="Nico",
             role="rescue swimmer",
             traits=["brave", "fast", "practical"],
-            goals=["reach stranded civilians before the current does", "support Elena's plan", "minimize preventable risk"],
-            fears=["being pinned by debris", "arriving seconds too late"],
+            goals=["reach the stranded bus before the water rises into the cabin", "help passengers cross the rescue line fast", "support Elena's plan"],
+            fears=["being pinned by debris", "losing footing in the current"],
             abilities=["swim strong currents", "handle ropes", "carry injured people through water"],
             relationships={
                 "Elena": "captain he trusts completely",
@@ -225,14 +225,14 @@ def define_flood_rescue_fable() -> FableDefinition:
             },
             state={"suited_up": True, "ready": True},
             description=(
-                "A rescue specialist who acts first with his hands and feet, then catches up with words later."
+                "A rescue specialist who works best in cold water, bad light, and the kind of panic that makes everyone else slower."
             ),
         ),
         CharacterProfile(
             name="Priya",
             role="dispatcher",
             traits=["focused", "precise", "steady"],
-            goals=["track flood changes", "route support efficiently", "keep the field team ahead of the danger"],
+            goals=["track flood changes", "route support efficiently", "keep the field team ahead of the next surge"],
             fears=["missing a critical update", "giving stale information"],
             abilities=["monitor emergency channels", "map routes quickly", "spot timing windows"],
             relationships={
@@ -242,16 +242,16 @@ def define_flood_rescue_fable() -> FableDefinition:
             },
             state={"at_command_post": True, "comms_clear": True},
             description=(
-                "An emergency dispatcher who turns chaos into usable timing, distances, and decisions."
+                "An emergency dispatcher who turns scattered reports, weather updates, and radio traffic into a rescue clock everyone else can act on."
             ),
         ),
         CharacterProfile(
             name="Marcus",
             role="bus driver",
-            traits=["responsible", "shaken", "stubborn"],
-            goals=["keep the children on his bus safe", "help the rescuers without panicking", "avoid abandoning anyone"],
-            fears=["the bridge giving way", "making the wrong call under pressure"],
-            abilities=["move people in orderly lines", "stay with frightened passengers", "follow instructions when they are clear"],
+            traits=["responsible", "shaken", "selfless"],
+            goals=["keep the children on his bus safe", "empty the bus seat by seat without panic", "stay behind until the last passenger is out"],
+            fears=["the water breaking through the door seals", "leaving a child behind"],
+            abilities=["move people in orderly lines", "keep frightened passengers focused", "follow instructions when they are clear"],
             relationships={
                 "Elena": "rescuer he is trying to trust",
                 "Nico": "last line between the passengers and the river",
@@ -259,22 +259,24 @@ def define_flood_rescue_fable() -> FableDefinition:
             },
             state={"stranded": True, "injured": False, "responsible_for_children": True},
             description=(
-                "A city bus driver trapped mid-route on a flooded bridge with children aboard and no room for mistakes."
+                "A city bus driver stranded with children aboard after floodwater trapped his route at a low-water crossing, trying to sound steadier than he feels."
             ),
         ),
     ]
 
     return FableDefinition(
         name="flood_rescue_night",
-        goal="Elena and her team must get the stranded bus passengers off the flooded bridge before the structure gives way.",
+        goal="Elena and her team must evacuate every passenger from a school bus stranded in floodwater at a washed-out crossing before Marcus sacrifices himself to save the last children aboard.",
         characters=characters,
         initial_world_vars={
             "goal_reached": False,
-            "setting": "A river bridge on the edge of town during a flash flood at night.",
-            "bridge_state": "The bridge is taking damage from fast water and floating debris.",
-            "passenger_state": "A city bus with children on board is stranded near the center span.",
+            "setting": "A school bus is stalled at a low-water crossing outside town after flash floodwater washes over the road.",
+            "rescue_layout": "The bus is angled in fast-moving water near a washed-out shoulder. Rescuers must anchor a rope line from dry ground to the bus and move passengers out one at a time.",
+            "road_state": "The asphalt beyond the bus has started to crumble where the shoulder gave way, so no one can simply drive or walk the bus out.",
+            "bus_state": "A school bus with children on board is trapped in knee- to waist-high floodwater, with one door jammed and water beginning to seep into the first step.",
             "weather": "Heavy rain, poor visibility, and rising water.",
-            "time_pressure": "The current is strengthening and the safe rescue window is closing quickly.",
+            "time_pressure": "Upstream runoff is still arriving, and another surge could lift or roll the bus within minutes.",
+            "fatal_turn": "Marcus is the last adult inside the bus and may need to brace the rear emergency exit long enough for the last children to escape, knowing the current could take him when the bus shifts.",
         },
         progress_reward=0.5,
         fallback_reward=0.0,

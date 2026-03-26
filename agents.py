@@ -24,7 +24,7 @@ class CharacterAgent:
     ) -> CharacterDecision:
         persona = self.profile.persona_text()
         world_knowledge = self._build_world_knowledge(world_vars)
-        last_scene_summary, previous_scene_summary = self._build_recent_history(recent_story)
+        recent_scene_summaries = self._build_recent_history(recent_story)
         revisions_used = 0
         feedback = revision_feedback
         action = "look around"
@@ -43,8 +43,7 @@ class CharacterAgent:
                 world_vars,
                 memory_snippets,
                 world_knowledge,
-                last_scene_summary,
-                previous_scene_summary,
+                recent_scene_summaries,
                 feedback,
             )
             action_resp = self.llm.complete_json(action_sys, action_user)
@@ -143,15 +142,12 @@ class CharacterAgent:
         return facts[:5]
 
     @staticmethod
-    def _build_recent_history(recent_story: list[str]) -> tuple[str, str]:
+    def _build_recent_history(recent_story: list[str]) -> list[str]:
         if not recent_story:
-            return "No prior scene has been narrated yet.", "No earlier scene is available."
+            return ["No prior scene has been narrated yet."]
 
-        last_scene = recent_story[-1].strip() or "No details available."
-        previous_scene = recent_story[-2].strip() if len(recent_story) > 1 else "No earlier scene is available."
-        if not previous_scene:
-            previous_scene = "No details available."
-        return last_scene, previous_scene
+        summaries = [scene.strip() or "No details available." for scene in recent_story[-4:]]
+        return summaries or ["No prior scene has been narrated yet."]
 
 
 class NarratorAgent:

@@ -10,7 +10,7 @@ def main() -> None:
     if not os.getenv("GEMINI_API_KEY"):
         raise RuntimeError("GEMINI_API_KEY is required.")
 
-    fable_name = os.getenv("FABLE_NAME", "maya_story")
+    fable_name = os.getenv("FABLE_NAME", "flood_rescue")
     fable = get_fable_definition(fable_name)
     characters = fable.characters
 
@@ -19,7 +19,7 @@ def main() -> None:
     result = pipeline.run(
         env=env,
         characters=characters,
-        cfg=Config(goal=fable.goal, max_steps=30, max_plan_revisions=1, rag_k=2),
+        cfg=Config(goal=fable.goal, max_steps=15, max_plan_revisions=1, rag_k=2),
     )
 
     graph_path = os.getenv("WORLD_GRAPH_OUTPUT_PATH", "final_world_graph.json")

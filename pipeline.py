@@ -47,7 +47,7 @@ class Pipeline:
                     goal=active_goal,
                     world_vars=world_before,
                     memory_snippets=memory_snippets,
-                    recent_story=story[-2:],
+                    recent_story=story[-4:],
                     max_plan_revisions=cfg.max_plan_revisions,
                 )
                 timeline.append(
