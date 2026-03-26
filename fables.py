@@ -266,7 +266,7 @@ def define_flood_rescue_fable() -> FableDefinition:
 
     return FableDefinition(
         name="flood_rescue_night",
-        goal="Elena and her team must evacuate every passenger from a school bus stranded in floodwater at a washed-out crossing before Marcus sacrifices himself to save the last children aboard.",
+        goal="Elena and her team must evacuate passengers from a school bus stranded in floodwater before Marcus sacrifices himself to save the last children aboard.",
         characters=characters,
         initial_world_vars={
             "goal_reached": False,
