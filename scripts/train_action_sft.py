@@ -377,3 +377,9 @@ def normalize_messages_for_template(messages: list[dict[str, str]]) -> list[dict
 
 if __name__ == "__main__":
     main()
+
+'''
+usage:
+
+python scripts/train_action_sft.py   --dataset-path action_sft_dataset.jsonl   --output-dir artifacts/gemma-action-sft
+'''
