@@ -9,9 +9,10 @@ from sim_types import CharacterDecision, CharacterProfile, NarratedStep
 
 
 class CharacterAgent:
-    def __init__(self, profile: CharacterProfile, llm: object) -> None:
+    def __init__(self, profile: CharacterProfile, action_llm: object, critic_llm: object) -> None:
         self.profile = profile
-        self.llm = llm
+        self.action_llm = action_llm
+        self.critic_llm = critic_llm
 
     def decide_action(
         self,
@@ -46,7 +47,7 @@ class CharacterAgent:
                 recent_scene_summaries,
                 feedback,
             )
-            action_resp = self.llm.complete_json(action_sys, action_user)
+            action_resp = self.action_llm.complete_json(action_sys, action_user)
             action = str(action_resp.get("action", "look around")).strip() or "look around"
             confidence_value = action_resp.get("confidence", 0.4)
             confidence = float(confidence_value) if isinstance(confidence_value, (int, float, str)) else 0.4
@@ -59,7 +60,7 @@ class CharacterAgent:
                 goal,
                 world_vars,
             )
-            critic_resp = self.llm.complete_json(critic_sys, critic_user)
+            critic_resp = self.critic_llm.complete_json(critic_sys, critic_user)
             revise = bool(critic_resp.get("revise", False)) if max_plan_revisions > 0 else False
             feedback = str(critic_resp.get("feedback", ""))
             advances_goal = bool(critic_resp.get("advances_goal", False))

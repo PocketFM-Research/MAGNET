@@ -16,7 +16,8 @@ def build_action_prompt(
         f"You are the action generator for {name}. "
         f"Character persona: {persona} "
         "Output one concrete next action for the character. "
-        "Be concise, realistic, and consistent with world variables, persona, and the current story goal."
+        "Be concise, realistic, and consistent with world variables, persona, and the current story goal. "
+        "Return strict JSON only, and if the action includes dialogue, use single quotes inside the action string instead of double quotes."
     )
     feedback_line = f"Revision feedback: {revision_feedback}\n" if revision_feedback else ""
     history_lines = "\n".join(

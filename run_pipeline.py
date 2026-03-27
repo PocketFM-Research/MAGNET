@@ -5,27 +5,34 @@ from networkx.readwrite import json_graph
 from environment import WorldProxyEnv
 from fables import get_fable_definition
 from pipeline import Config, Pipeline
+from llm import build_action_llm, build_default_llm
 
 def main() -> None:
     if not os.getenv("GEMINI_API_KEY"):
         raise RuntimeError("GEMINI_API_KEY is required.")
 
-    fable_name = os.getenv("FABLE_NAME", "flood_rescue")
+    fable_name = os.getenv("FABLE_NAME", "maya_story")
     fable = get_fable_definition(fable_name)
     characters = fable.characters
 
-    pipeline = Pipeline()
+    pipeline = Pipeline(
+        llm=build_default_llm(),
+        action_llm=build_action_llm(),
+    )
     env = WorldProxyEnv(fable=fable)
     result = pipeline.run(
         env=env,
         characters=characters,
-        cfg=Config(goal=fable.goal, max_steps=15, max_plan_revisions=1, rag_k=2),
+        cfg=Config(goal=fable.goal, max_steps=5, max_plan_revisions=1, rag_k=2),
     )
 
     graph_path = os.getenv("WORLD_GRAPH_OUTPUT_PATH", "final_world_graph.json")
     graph_exported = False
     try:
-        graph_data = json_graph.node_link_data(env.world_graph, edges="links")
+        try:
+            graph_data = json_graph.node_link_data(env.world_graph, edges="links")
+        except TypeError:
+            graph_data = json_graph.node_link_data(env.world_graph, link="links")
         with open(graph_path, "w", encoding="utf-8") as handle:
             json.dump(graph_data, handle, indent=2)
             handle.write("\n")
