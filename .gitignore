@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+
+.env
+.env.*
+
+llm_output.txt
+final_world_graph.json
+
+outputs/
+artifacts/
