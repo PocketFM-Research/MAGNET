@@ -120,7 +120,46 @@ class GeminiLLM:
         repaired = re.sub(r"^```(?:json)?\s*", "", repaired)
         repaired = re.sub(r"\s*```$", "", repaired)
         repaired = re.sub(r'([,{]\s*)""([A-Za-z0-9_]+)"\s*:', r'\1"\2":', repaired)
+        repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
+        repaired = re.sub(
+            r'("world_updates"\s*:\s*\{.*?)(,\s*"(?:confidence|feedback|reason|revise|advances_goal|goal_reached)"\s*:)',
+            r"\1}\2",
+            repaired,
+            count=1,
+            flags=re.DOTALL,
+        )
+        repaired = GeminiLLM._balance_json_delimiters(repaired)
         return repaired
+
+    @staticmethod
+    def _balance_json_delimiters(content: str) -> str:
+        stack: list[str] = []
+        in_string = False
+        escape = False
+
+        for char in content:
+            if in_string:
+                if escape:
+                    escape = False
+                    continue
+                if char == "\\":
+                    escape = True
+                    continue
+                if char == '"':
+                    in_string = False
+                continue
+
+            if char == '"':
+                in_string = True
+            elif char in "{[":
+                stack.append(char)
+            elif char == "}" and stack and stack[-1] == "{":
+                stack.pop()
+            elif char == "]" and stack and stack[-1] == "[":
+                stack.pop()
+
+        closing = "".join("}" if opener == "{" else "]" for opener in reversed(stack))
+        return content + closing
 
     @staticmethod
     def _extract_text_from_candidate(candidate: dict[str, Any]) -> str | None:
