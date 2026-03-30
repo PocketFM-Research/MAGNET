@@ -19,13 +19,16 @@ def main() -> None:
     result = pipeline.run(
         env=env,
         characters=characters,
-        cfg=Config(goal=fable.goal, max_steps=15, max_plan_revisions=1, rag_k=2),
+        cfg=Config(goal=fable.goal, max_steps=15, max_plan_revisions=1, use_rag=False, rag_k=2),
     )
 
     graph_path = os.getenv("WORLD_GRAPH_OUTPUT_PATH", "final_world_graph.json")
     graph_exported = False
     try:
-        graph_data = json_graph.node_link_data(env.world_graph, edges="links")
+        try:
+            graph_data = json_graph.node_link_data(env.world_graph, edges="links")
+        except TypeError:
+            graph_data = json_graph.node_link_data(env.world_graph, link="links")
         with open(graph_path, "w", encoding="utf-8") as handle:
             json.dump(graph_data, handle, indent=2)
             handle.write("\n")
