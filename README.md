@@ -31,7 +31,8 @@ The default story is the corner-store romance scenario, not the ant-and-dove sce
 - simulates a story over multiple timesteps
 - keeps world state in a `networkx.DiGraph`
 - tracks structured episodic memory with embedding retrieval via `llama-index`
-- calls Gemini in JSON mode for action generation, criticism, narration, and next-goal generation
+- uses the local Gemma action SFT adapter for character action generation
+- calls Gemini in JSON mode for criticism, narration, and next-goal generation
 - exports the final world graph to JSON
 - appends prompts, outputs, and the final story to a log file
 
@@ -43,7 +44,7 @@ The default story is the corner-store romance scenario, not the ant-and-dove sce
 - [`environment.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/environment.py): graph-backed world environment and state update logic
 - [`fables.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/fables.py): `FableDefinition` plus built-in story setups
 - [`memory.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/memory.py): structured memory entries, vector index creation, and retrieval
-- [`llm.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/llm.py): Gemini API wrapper
+- [`llm.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/llm.py): Gemini API wrapper plus local Gemma action-SFT inference loader
 - [`prompts.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/prompts.py): prompt templates for action, critic, narrator, and next-goal stages
 - [`sim_types.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/sim_types.py): shared dataclasses
 
@@ -121,6 +122,7 @@ Characters:
 
 - Python 3.10+
 - a valid `GEMINI_API_KEY`
+- local access to the Gemma base checkpoint referenced by the action SFT adapter, or Hugging Face access so it can be downloaded
 
 ## Setup
 
@@ -136,6 +138,11 @@ pip install -r requirements.txt
 - `GEMINI_MODEL`: optional, defaults to `gemini-2.5-flash`
 - `GEMINI_BASE_URL`: optional, defaults to `https://generativelanguage.googleapis.com/v1beta`
 - `GEMINI_OUTPUT_LOG_PATH`: optional, defaults to `llm_output.txt`
+- `ACTION_SFT_MODEL_PATH`: optional, defaults to `artifacts/gemma-action-sft`
+- `ACTION_SFT_BASE_MODEL`: optional override for the base model backing the LoRA adapter; when unset, the repo reads `base_model_name_or_path` from `adapter_config.json`
+- `ACTION_SFT_MAX_NEW_TOKENS`: optional, defaults to `192`
+- `ACTION_SFT_TEMPERATURE`: optional, defaults to `0`
+- `ACTION_SFT_OUTPUT_LOG_PATH`: optional, defaults to `GEMINI_OUTPUT_LOG_PATH`
 - `FABLE_NAME`: optional, defaults to `maya story`
 - `WORLD_GRAPH_OUTPUT_PATH`: optional, defaults to `final_world_graph.json`
 
