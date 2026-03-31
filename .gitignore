@@ -3,6 +3,7 @@ __pycache__/
 
 .env
 .env.*
+.venv/
 
 llm_output.txt
 final_world_graph.json

@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from networkx.readwrite import json_graph
 from environment import WorldProxyEnv
 from fables import get_fable_definition
+from llm import build_action_llm, build_default_llm
 from pipeline import Config, Pipeline
 
 def main() -> None:
@@ -14,7 +15,13 @@ def main() -> None:
     fable = get_fable_definition(fable_name)
     characters = fable.characters
 
-    pipeline = Pipeline()
+    critic_llm = build_default_llm()
+    action_model_path = os.getenv("ACTION_MODEL_PATH", "").strip()
+    if action_model_path:
+        action_llm = build_action_llm()
+        pipeline = Pipeline(llm=critic_llm, action_llm=action_llm)
+    else:
+        pipeline = Pipeline(llm=critic_llm)
     env = WorldProxyEnv(fable=fable)
     result = pipeline.run(
         env=env,

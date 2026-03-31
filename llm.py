@@ -4,6 +4,7 @@ import os
 import re
 from datetime import datetime, timezone
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from urllib import error, request
 
@@ -215,5 +216,276 @@ def build_default_llm() -> GeminiLLM:
         api_key=api_key,
         model=model,
         base_url=base_url,
+        output_log_path=output_log_path,
+    )
+
+
+@dataclass
+class ActionAdapterLLM:
+    adapter_path: str = "artifacts/gemma-action-dpo"
+    base_model: str | None = None
+    max_new_tokens: int = 192
+    temperature: float = 0.0
+    load_in_4bit: bool = False
+    output_log_path: str | None = "llm_output.txt"
+
+    def __post_init__(self) -> None:
+        self._model, self._tokenizer, self._resolved_model_name = self._load_model()
+
+    def complete_json(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.1,
+    ) -> dict[str, Any]:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        prompt_text = self._build_prompt_text(messages)
+        inputs = self._tokenizer(prompt_text, return_tensors="pt")
+        model_device = getattr(self._model, "device", None)
+        if model_device is not None:
+            inputs = {key: value.to(model_device) for key, value in inputs.items()}
+
+        effective_temperature = self.temperature if self.temperature > 0 else temperature
+        generation_kwargs: dict[str, Any] = {
+            "max_new_tokens": self.max_new_tokens,
+            "pad_token_id": self._tokenizer.pad_token_id,
+            "eos_token_id": self._tokenizer.eos_token_id,
+        }
+        if effective_temperature > 0:
+            generation_kwargs["do_sample"] = True
+            generation_kwargs["temperature"] = effective_temperature
+        else:
+            generation_kwargs["do_sample"] = False
+
+        output_ids = self._model.generate(**inputs, **generation_kwargs)
+        prompt_length = int(inputs["input_ids"].shape[-1])
+        generated_ids = output_ids[0][prompt_length:]
+        content = self._tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
+
+        self._append_output_log(system_prompt, user_prompt, content)
+        return self._parse_json_object(content)
+
+    def _append_output_log(self, system_prompt: str, user_prompt: str, content: str) -> None:
+        if not self.output_log_path:
+            return
+
+        timestamp = datetime.now(timezone.utc).isoformat()
+        block = (
+            f"[{timestamp}] model={self._resolved_model_name}\n"
+            "=== SYSTEM PROMPT ===\n"
+            f"{system_prompt}\n"
+            "=== USER PROMPT ===\n"
+            f"{user_prompt}\n"
+            "=== LLM OUTPUT ===\n"
+            f"{content}\n"
+            "=== END ===\n\n"
+        )
+        try:
+            with open(self.output_log_path, "a", encoding="utf-8") as handle:
+                handle.write(block)
+        except OSError:
+            pass
+
+    def _load_model(self) -> tuple[Any, Any, str]:
+        try:
+            import torch
+            from peft import AutoPeftModelForCausalLM
+            from transformers import AutoTokenizer, BitsAndBytesConfig
+        except ImportError as exc:
+            raise LLMError(
+                "Action adapter inference requires `torch`, `transformers`, and `peft`."
+            ) from exc
+
+        adapter_path = Path(self.adapter_path)
+        if not adapter_path.exists():
+            raise LLMError(f"Action adapter path does not exist: {adapter_path}")
+
+        tokenizer = AutoTokenizer.from_pretrained(str(adapter_path))
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+        model_kwargs: dict[str, Any] = {}
+        if torch.cuda.is_available():
+            model_kwargs["device_map"] = "auto"
+        if self.load_in_4bit:
+            model_kwargs["quantization_config"] = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
+            )
+        else:
+            model_kwargs["torch_dtype"] = torch.bfloat16 if torch.cuda.is_available() else torch.float32
+
+        resolved_base_model = self.base_model or self._resolve_base_model(adapter_path)
+        if resolved_base_model:
+            try:
+                model = AutoPeftModelForCausalLM.from_pretrained(
+                    str(adapter_path),
+                    base_model_name_or_path=resolved_base_model,
+                    **model_kwargs,
+                )
+            except TypeError:
+                model = AutoPeftModelForCausalLM.from_pretrained(str(adapter_path), **model_kwargs)
+        else:
+            model = AutoPeftModelForCausalLM.from_pretrained(str(adapter_path), **model_kwargs)
+
+        if not torch.cuda.is_available():
+            model = model.to("cpu")
+
+        model.eval()
+        resolved_model_name = f"action-dpo:{adapter_path.as_posix()}"
+        return model, tokenizer, resolved_model_name
+
+    @staticmethod
+    def _resolve_base_model(adapter_path: Path) -> str | None:
+        config_path = adapter_path / "adapter_config.json"
+        if not config_path.exists():
+            return None
+        try:
+            parsed = json.loads(config_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        base_model = parsed.get("base_model_name_or_path")
+        return str(base_model) if isinstance(base_model, str) and base_model.strip() else None
+
+    def _build_prompt_text(self, messages: list[dict[str, str]]) -> str:
+        try:
+            return self._tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+        except Exception:
+            return self._normalize_messages_for_template(messages)
+
+    @staticmethod
+    def _normalize_messages_for_template(messages: list[dict[str, str]]) -> str:
+        system_parts = [m["content"].strip() for m in messages if m["role"] == "system" and m["content"].strip()]
+        user_parts = [m["content"].strip() for m in messages if m["role"] == "user" and m["content"].strip()]
+        prompt_parts: list[str] = []
+        if system_parts:
+            prompt_parts.append("System instructions:\n" + "\n\n".join(system_parts))
+        if user_parts:
+            prompt_parts.append("User request:\n" + "\n\n".join(user_parts))
+        prompt_parts.append("Assistant:")
+        return "\n\n".join(prompt_parts)
+
+    @staticmethod
+    def _parse_json_object(content: str) -> dict[str, Any]:
+        parsed = ActionAdapterLLM._try_parse_json(content)
+        if parsed is not None:
+            return parsed
+
+        extracted = ActionAdapterLLM._extract_json_object(content)
+        if extracted is not None:
+            parsed = ActionAdapterLLM._try_parse_json(extracted)
+            if parsed is not None:
+                return parsed
+
+        recovered = ActionAdapterLLM._recover_action_payload(content)
+        if recovered is not None:
+            return recovered
+
+        raise LLMError(f"Action adapter returned non-JSON content: {content[:300]}")
+
+    @staticmethod
+    def _try_parse_json(content: str) -> dict[str, Any] | None:
+        repaired = GeminiLLM._repair_json_text(content)
+        try:
+            parsed = json.loads(repaired)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
+    @staticmethod
+    def _extract_json_object(content: str) -> str | None:
+        start = content.find("{")
+        end = content.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            return None
+        return content[start : end + 1]
+
+    @staticmethod
+    def _recover_action_payload(content: str) -> dict[str, Any] | None:
+        action = ActionAdapterLLM._extract_string_field(content, "action")
+        confidence = ActionAdapterLLM._extract_numeric_field(content, "confidence")
+        rationale = ActionAdapterLLM._extract_string_field(content, "rationale")
+
+        if action is None and rationale is None:
+            return None
+
+        payload: dict[str, Any] = {}
+        if action is not None:
+            payload["action"] = action
+        if confidence is not None:
+            payload["confidence"] = confidence
+        if rationale is not None:
+            payload["rationale"] = rationale
+        return payload or None
+
+    @staticmethod
+    def _extract_string_field(content: str, field_name: str) -> str | None:
+        field_pattern = re.compile(rf'"{re.escape(field_name)}"\s*:\s*"', flags=re.DOTALL)
+        match = field_pattern.search(content)
+        if not match:
+            return None
+
+        start = match.end()
+        terminator_patterns = [
+            re.compile(r'"\s*,\s*"confidence"\s*:', flags=re.DOTALL),
+            re.compile(r'"\s*,\s*"rationale"\s*:', flags=re.DOTALL),
+            re.compile(r'"\s*}\s*(?:\n|$)', flags=re.DOTALL),
+            re.compile(r'"\s*\n\s*}\s*(?:\n|$)', flags=re.DOTALL),
+        ]
+
+        end = -1
+        for pattern in terminator_patterns:
+            terminator_match = pattern.search(content, start)
+            if terminator_match is None:
+                continue
+            candidate_end = terminator_match.start()
+            if end == -1 or candidate_end < end:
+                end = candidate_end
+
+        value = content[start:end].strip() if end != -1 else content[start:].strip()
+        value = re.sub(r"[}\]]+\s*$", "", value).strip()
+        value = value.replace('\\"', '"')
+        value = re.sub(r"\s+", " ", value).strip()
+        return value or None
+
+    @staticmethod
+    def _extract_numeric_field(content: str, field_name: str) -> float | None:
+        match = re.search(
+            rf'"{re.escape(field_name)}"\s*:\s*(-?\d+(?:\.\d+)?)',
+            content,
+        )
+        if not match:
+            return None
+        try:
+            return float(match.group(1))
+        except ValueError:
+            return None
+
+
+def build_action_llm() -> ActionAdapterLLM:
+    adapter_path = os.getenv("ACTION_MODEL_PATH", "artifacts/gemma-action-dpo")
+    base_model = os.getenv("ACTION_MODEL_BASE")
+    max_new_tokens = int(os.getenv("ACTION_MODEL_MAX_NEW_TOKENS", "192"))
+    temperature = float(os.getenv("ACTION_MODEL_TEMPERATURE", "0.5"))
+    load_in_4bit = os.getenv("ACTION_MODEL_LOAD_IN_4BIT", "0").strip().lower() in {"1", "true", "yes"}
+    output_log_path = os.getenv(
+        "ACTION_MODEL_OUTPUT_LOG_PATH",
+        os.getenv("GEMINI_OUTPUT_LOG_PATH", "llm_output.txt"),
+    )
+    return ActionAdapterLLM(
+        adapter_path=adapter_path,
+        base_model=base_model,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        load_in_4bit=load_in_4bit,
         output_log_path=output_log_path,
     )
