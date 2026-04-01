@@ -12,10 +12,12 @@ The codebase currently runs a loop where:
 
 ## Current Behavior
 
-The repository currently supports two built-in story definitions:
+The repository currently supports several built-in story definitions:
 
-- `ant_and_dove`
 - `maya story`
+- `wedding_weekend`
+- `restaurant_last_service`
+- `flood_rescue`
 
 The default entrypoint in [`run_pipeline.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/run_pipeline.py) now uses:
 
@@ -24,7 +26,7 @@ The default entrypoint in [`run_pipeline.py`](/Users/chloeho/Documents/pocketfm/
 - `max_plan_revisions=1`
 - `rag_k=2`
 
-The default story is the corner-store romance scenario, not the ant-and-dove scenario.
+The default story is the flood-rescue scenario unless `FABLE_NAME` is set.
 
 ## What The System Does
 
@@ -105,17 +107,44 @@ Characters:
 
 Initial world state includes relationship tension, a job-offer deadline, and a neighborhood setting.
 
-### `ant_and_dove`
+### `wedding_weekend`
 
 Premise:
 
-`The ant saves the dove from the hunter.`
+`Before the ceremony begins, Eli must stop avoiding the truth and choose whether he will protect Sofia and Nina from Marianne's control or let the old family pattern ruin the marriage before it starts.`
 
 Characters:
 
-- `Ant`
-- `Dove`
-- `Spider`
+- `Nina`
+- `Eli`
+- `Sofia`
+- `Marianne`
+
+### `restaurant_last_service`
+
+Premise:
+
+`During the restaurant's final dinner service, Theo must decide whether to cling to control or hand real trust to Mara and Luis before the night collapses into one last beautiful disaster.`
+
+Characters:
+
+- `Theo`
+- `Mara`
+- `Luis`
+- `Jade`
+
+### `flood_rescue`
+
+Premise:
+
+`Elena and her team must evacuate passengers from a school bus stranded in floodwater before Marcus sacrifices himself to save the last children aboard.`
+
+Characters:
+
+- `Elena`
+- `Nico`
+- `Priya`
+- `Marcus`
 
 ## Requirements
 
@@ -146,11 +175,11 @@ export GEMINI_API_KEY=your_api_key_here
 python run_pipeline.py
 ```
 
-Run the ant-and-dove scenario explicitly:
+Run the wedding-weekend scenario explicitly:
 
 ```bash
 export GEMINI_API_KEY=your_api_key_here
-export FABLE_NAME="ant_and_dove"
+export FABLE_NAME="wedding_weekend"
 python run_pipeline.py
 ```
 
