@@ -183,7 +183,7 @@ class NarratorAgent:
             proposals=proposal_payload,
         )
         try:
-            narrator_resp = self.llm.complete_json(narrator_sys, narrator_user)
+            narrator_resp = self.llm.complete_json(narrator_sys, narrator_user, temperature=0.35)
         except Exception:
             paragraph = "; ".join(
                 f"{proposal.character} {proposal.action}" for proposal in proposals[:2]

@@ -63,6 +63,14 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Load the base model in 4-bit mode via bitsandbytes.",
     )
+    parser.add_argument(
+        "--lora-target-modules",
+        default="auto",
+        help=(
+            "LoRA target modules: 'auto', 'attention-only', or a comma-separated list "
+            "such as q_proj,k_proj,v_proj,o_proj."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -102,23 +110,17 @@ def main() -> None:
     if args.load_in_4bit:
         model = prepare_model_for_kbit_training(model)
 
+    target_modules = resolve_lora_target_modules(model, args.lora_target_modules)
     peft_config = LoraConfig(
         r=args.lora_rank,
         lora_alpha=args.lora_alpha,
         lora_dropout=0.0,
         bias="none",
         task_type="CAUSAL_LM",
-        target_modules=[
-            "q_proj",
-            "k_proj",
-            "v_proj",
-            "o_proj",
-            "gate_proj",
-            "up_proj",
-            "down_proj",
-        ],
+        target_modules=target_modules,
     )
     model = get_peft_model(model, peft_config)
+    ensure_trl_model_compat(model)
 
     converted = [
         convert_row_to_preference_example(
@@ -183,6 +185,7 @@ def main() -> None:
                 "eval_rows": len(eval_rows),
                 "output_dir": str(output_dir),
                 "model": args.model,
+                "lora_target_modules": target_modules,
             },
             indent=2,
         )
@@ -266,6 +269,76 @@ def build_completion_text(action: str, rationale: str, confidence: float) -> str
         "rationale": rationale or "fallback",
     }
     return json.dumps(payload, ensure_ascii=True)
+
+
+def ensure_trl_model_compat(model: Any) -> None:
+    if not hasattr(model, "warnings_issued") or not isinstance(getattr(model, "warnings_issued"), dict):
+        setattr(model, "warnings_issued", {})
+
+
+def resolve_lora_target_modules(model: Any, requested: str) -> list[str]:
+    normalized = requested.strip().lower()
+    if not normalized or normalized == "auto":
+        return discover_lora_target_modules(model, include_mlp=True)
+    if normalized == "attention-only":
+        return discover_lora_target_modules(model, include_mlp=False)
+
+    modules = [part.strip() for part in requested.split(",") if part.strip()]
+    if not modules:
+        raise ValueError("No valid LoRA target modules were provided.")
+    return modules
+
+
+def discover_lora_target_modules(model: Any, include_mlp: bool) -> list[str]:
+    attention_suffixes = [
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "out_proj",
+        "qkv_proj",
+        "query_key_value",
+        "c_attn",
+        "c_proj",
+        "Wqkv",
+    ]
+    mlp_suffixes = [
+        "gate_proj",
+        "up_proj",
+        "down_proj",
+        "gate_up_proj",
+        "wi",
+        "wo",
+        "w1",
+        "w2",
+        "w3",
+        "ffn_up_proj",
+        "ffn_down_proj",
+    ]
+    candidate_suffixes = attention_suffixes + (mlp_suffixes if include_mlp else [])
+    excluded_suffixes = {"lm_head", "embed_tokens", "tok_embeddings", "output"}
+
+    discovered: list[str] = []
+    for name, module in model.named_modules():
+        if not name or "." not in name:
+            continue
+        suffix = name.rsplit(".", 1)[-1]
+        if suffix in excluded_suffixes:
+            continue
+        if suffix not in candidate_suffixes:
+            continue
+        if not hasattr(module, "weight"):
+            continue
+        if suffix not in discovered:
+            discovered.append(suffix)
+
+    if discovered:
+        return discovered
+
+    fallback = ["q_proj", "k_proj", "v_proj", "o_proj"]
+    if include_mlp:
+        fallback.extend(["gate_proj", "up_proj", "down_proj"])
+    return fallback
 
 
 def split_rows(

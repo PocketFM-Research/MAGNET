@@ -292,8 +292,8 @@ class ActionAdapterLLM:
     def _load_model(self) -> tuple[Any, Any, str]:
         try:
             import torch
-            from peft import AutoPeftModelForCausalLM
-            from transformers import AutoTokenizer, BitsAndBytesConfig
+            from peft import PeftModel
+            from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
         except ImportError as exc:
             raise LLMError(
                 "Action adapter inference requires `torch`, `transformers`, and `peft`."
@@ -303,13 +303,22 @@ class ActionAdapterLLM:
         if not adapter_path.exists():
             raise LLMError(f"Action adapter path does not exist: {adapter_path}")
 
-        tokenizer = AutoTokenizer.from_pretrained(str(adapter_path))
+        resolved_base_model = self.base_model or self._resolve_base_model(adapter_path)
+        tokenizer_source = resolved_base_model or str(adapter_path)
+        tokenizer_kwargs: dict[str, Any] = {}
+        if resolved_base_model and "mistral" in resolved_base_model.lower():
+            tokenizer_kwargs["fix_mistral_regex"] = True
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(tokenizer_source, **tokenizer_kwargs)
+        except AttributeError:
+            tokenizer_kwargs.pop("fix_mistral_regex", None)
+            tokenizer = AutoTokenizer.from_pretrained(tokenizer_source, **tokenizer_kwargs)
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 
         model_kwargs: dict[str, Any] = {}
         if torch.cuda.is_available():
-            model_kwargs["device_map"] = "auto"
+            model_kwargs["device_map"] = {"": 0}
         if self.load_in_4bit:
             model_kwargs["quantization_config"] = BitsAndBytesConfig(
                 load_in_4bit=True,
@@ -318,20 +327,21 @@ class ActionAdapterLLM:
                 bnb_4bit_use_double_quant=True,
             )
         else:
-            model_kwargs["torch_dtype"] = torch.bfloat16 if torch.cuda.is_available() else torch.float32
+            model_kwargs["dtype"] = torch.bfloat16 if torch.cuda.is_available() else torch.float32
 
-        resolved_base_model = self.base_model or self._resolve_base_model(adapter_path)
-        if resolved_base_model:
-            try:
-                model = AutoPeftModelForCausalLM.from_pretrained(
-                    str(adapter_path),
-                    base_model_name_or_path=resolved_base_model,
-                    **model_kwargs,
-                )
-            except TypeError:
-                model = AutoPeftModelForCausalLM.from_pretrained(str(adapter_path), **model_kwargs)
-        else:
-            model = AutoPeftModelForCausalLM.from_pretrained(str(adapter_path), **model_kwargs)
+        if not resolved_base_model:
+            raise LLMError(
+                f"Could not determine the base model for action adapter at {adapter_path}."
+            )
+
+        base_model = AutoModelForCausalLM.from_pretrained(
+            resolved_base_model,
+            **model_kwargs,
+        )
+        model = PeftModel.from_pretrained(
+            base_model,
+            str(adapter_path),
+        )
 
         if not torch.cuda.is_available():
             model = model.to("cpu")

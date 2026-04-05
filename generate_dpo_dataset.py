@@ -287,7 +287,7 @@ def sample_candidates(
     candidates: list[dict[str, Any]] = []
     used_actions: set[str] = set()
 
-    for attempt in range(4):
+    for attempt in range(6):
         variant_tag = f"variant-{attempt + 1}"
         system_prompt, user_prompt = build_action_prompt(
             prompt_payload["character"],
@@ -303,7 +303,10 @@ def sample_candidates(
                 else None
             ),
         )
-        response = llm.complete_json(system_prompt, user_prompt, temperature=temperature)
+        try:
+            response = llm.complete_json(system_prompt, user_prompt, temperature=temperature)
+        except LLMError:
+            continue
         action = str(response.get("action", "")).strip()
         if not action:
             continue

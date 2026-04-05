@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Any
 import networkx as nx
-from fables import FableDefinition, define_ant_and_dove_fable
+from fables import FableDefinition, define_flood_rescue_fable
 from sim_types import CharacterDecision, StepResult
 
 
@@ -9,7 +9,7 @@ class WorldProxyEnv:
     def __init__(self, llm: object | None = None, fable: FableDefinition | None = None) -> None:
         self.world_graph = nx.DiGraph()
         self.llm = llm
-        self.fable = fable or define_ant_and_dove_fable()
+        self.fable = fable or define_flood_rescue_fable()
 
     def set_llm(self, llm: object | None) -> None:
         self.llm = llm
