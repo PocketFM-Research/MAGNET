@@ -426,7 +426,7 @@ def discover_lora_target_modules(model: Any, include_mlp: bool) -> list[str]:
     fallback = ["q_proj", "k_proj", "v_proj", "o_proj"]
     if include_mlp:
         fallback.extend(["gate_proj", "up_proj", "down_proj"])
-    return fallback
+    return expand_requested_target_modules(model, fallback)
 
 
 def expand_requested_target_modules(model: Any, modules: list[str]) -> list[str]:
