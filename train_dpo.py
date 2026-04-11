@@ -237,7 +237,12 @@ def convert_row_to_preference_example(
         rationale=str(row.get("rejected_rationale", "")).strip(),
         confidence=max(0.0, min(1.0, default_confidence - 0.2)),
     )
-    return {"prompt": prompt, "chosen": chosen, "rejected": rejected}
+    return {
+        "prompt": prompt,
+        "chosen": chosen,
+        "rejected": rejected,
+        "images": [],
+    }
 
 
 def build_chat_prompt(tokenizer: Any, system_prompt: str, user_prompt: str) -> str:
