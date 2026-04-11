@@ -9,6 +9,24 @@ from typing import Any
 from prompts import build_action_prompt
 
 
+class TextOnlyProcessingAdapter:
+    def __init__(self, tokenizer: Any) -> None:
+        self.tokenizer = tokenizer
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        kwargs.pop("images", None)
+        text = kwargs.pop("text", None)
+        if text is not None and not args:
+            return self.tokenizer(text, *args, **kwargs)
+        return self.tokenizer(*args, **kwargs)
+
+    def apply_chat_template(self, *args: Any, **kwargs: Any) -> Any:
+        return self.tokenizer.apply_chat_template(*args, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.tokenizer, name)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Train a DPO adapter from generated world-model preference data."
@@ -106,6 +124,7 @@ def main() -> None:
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer = ensure_trl_tokenizer_compat(tokenizer)
+    processing_class = build_trl_processing_class(tokenizer)
 
     model = AutoModelForCausalLM.from_pretrained(args.model, **model_kwargs)
     if args.load_in_4bit:
@@ -169,7 +188,7 @@ def main() -> None:
         model=model,
         ref_model=None,
         args=DPOConfig(**training_kwargs),
-        processing_class=tokenizer,
+        processing_class=processing_class,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
     )
@@ -281,6 +300,10 @@ def ensure_trl_tokenizer_compat(tokenizer: Any) -> Any:
     if not hasattr(tokenizer, "tokenizer"):
         setattr(tokenizer, "tokenizer", tokenizer)
     return tokenizer
+
+
+def build_trl_processing_class(tokenizer: Any) -> Any:
+    return TextOnlyProcessingAdapter(tokenizer)
 
 
 def resolve_lora_target_modules(model: Any, requested: str) -> list[str]:
