@@ -394,6 +394,7 @@ def discover_lora_target_modules(model: Any, include_mlp: bool) -> list[str]:
     candidate_suffixes = attention_suffixes + (mlp_suffixes if include_mlp else [])
     excluded_suffixes = {"lm_head", "embed_tokens", "tok_embeddings", "output"}
 
+    text_stack_discovered: list[str] = []
     discovered: list[str] = []
     discovered_wrapped: list[str] = []
     for name, module in model.named_modules():
@@ -406,6 +407,14 @@ def discover_lora_target_modules(model: Any, include_mlp: bool) -> list[str]:
         parent_suffix = parent_name.rsplit(".", 1)[-1] if "." in parent_name else parent_name
         if suffix in excluded_suffixes:
             continue
+        if (
+            name.startswith("model.language_model.layers.")
+            and suffix in candidate_suffixes
+            and hasattr(module, "weight")
+        ):
+            if name not in text_stack_discovered:
+                text_stack_discovered.append(name)
+            continue
         if suffix == "linear" and parent_suffix in candidate_suffixes and hasattr(module, "weight"):
             if name not in discovered_wrapped:
                 discovered_wrapped.append(name)
@@ -416,6 +425,9 @@ def discover_lora_target_modules(model: Any, include_mlp: bool) -> list[str]:
             continue
         if suffix not in discovered:
             discovered.append(suffix)
+
+    if text_stack_discovered:
+        return text_stack_discovered
 
     if discovered_wrapped:
         return discovered_wrapped
@@ -431,6 +443,7 @@ def discover_lora_target_modules(model: Any, include_mlp: bool) -> list[str]:
 
 def expand_requested_target_modules(model: Any, modules: list[str]) -> list[str]:
     requested = set(modules)
+    expanded_text_stack: list[str] = []
     expanded: list[str] = []
     for name, module in model.named_modules():
         if not name or "." not in name:
@@ -440,9 +453,20 @@ def expand_requested_target_modules(model: Any, modules: list[str]) -> list[str]
         suffix = name.rsplit(".", 1)[-1]
         parent_name = name.rsplit(".", 1)[0]
         parent_suffix = parent_name.rsplit(".", 1)[-1] if "." in parent_name else parent_name
+        if (
+            name.startswith("model.language_model.layers.")
+            and suffix in requested
+            and hasattr(module, "weight")
+        ):
+            if name not in expanded_text_stack:
+                expanded_text_stack.append(name)
+            continue
         if suffix == "linear" and parent_suffix in requested and hasattr(module, "weight"):
             if name not in expanded:
                 expanded.append(name)
+
+    if expanded_text_stack:
+        return expanded_text_stack
 
     if expanded:
         return expanded
