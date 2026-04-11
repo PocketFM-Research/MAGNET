@@ -399,6 +399,8 @@ def discover_lora_target_modules(model: Any, include_mlp: bool) -> list[str]:
     for name, module in model.named_modules():
         if not name or "." not in name:
             continue
+        if is_excluded_lora_module_name(name):
+            continue
         suffix = name.rsplit(".", 1)[-1]
         parent_name = name.rsplit(".", 1)[0]
         parent_suffix = parent_name.rsplit(".", 1)[-1] if "." in parent_name else parent_name
@@ -433,6 +435,8 @@ def expand_requested_target_modules(model: Any, modules: list[str]) -> list[str]
     for name, module in model.named_modules():
         if not name or "." not in name:
             continue
+        if is_excluded_lora_module_name(name):
+            continue
         suffix = name.rsplit(".", 1)[-1]
         parent_name = name.rsplit(".", 1)[0]
         parent_suffix = parent_name.rsplit(".", 1)[-1] if "." in parent_name else parent_name
@@ -443,6 +447,18 @@ def expand_requested_target_modules(model: Any, modules: list[str]) -> list[str]
     if expanded:
         return expanded
     return modules
+
+
+def is_excluded_lora_module_name(name: str) -> bool:
+    excluded_tokens = (
+        "vision_tower",
+        "vision_model",
+        "multi_modal_projector",
+        "multimodal_projector",
+        "audio_tower",
+        "audio_model",
+    )
+    return any(token in name for token in excluded_tokens)
 
 
 def split_rows(
