@@ -82,6 +82,7 @@ def main() -> None:
     from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
     from trl import DPOConfig, DPOTrainer
+    patch_trl_for_text_only_dpo(DPOTrainer)
 
     dataset_path = Path(args.dataset)
     rows = load_rows(dataset_path, limit=args.limit)
@@ -280,6 +281,31 @@ def build_completion_text(action: str, rationale: str, confidence: float) -> str
 def ensure_trl_model_compat(model: Any) -> None:
     if not hasattr(model, "warnings_issued") or not isinstance(getattr(model, "warnings_issued"), dict):
         setattr(model, "warnings_issued", {})
+
+
+def patch_trl_for_text_only_dpo(dpo_trainer_cls: Any) -> None:
+    if getattr(dpo_trainer_cls, "_world_models_text_only_patch", False):
+        return
+
+    original_tokenize_row = dpo_trainer_cls.tokenize_row
+
+    def process_row(
+        features: dict[str, Any],
+        processing_class: Any,
+        max_prompt_length: int | None,
+        max_completion_length: int | None,
+        add_special_tokens: bool,
+    ) -> dict[str, Any]:
+        return original_tokenize_row(
+            features,
+            processing_class,
+            max_prompt_length,
+            max_completion_length,
+            add_special_tokens,
+        )
+
+    dpo_trainer_cls.process_row = staticmethod(process_row)
+    setattr(dpo_trainer_cls, "_world_models_text_only_patch", True)
 
 
 def ensure_trl_tokenizer_compat(tokenizer: Any) -> Any:
