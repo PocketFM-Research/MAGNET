@@ -105,6 +105,7 @@ def main() -> None:
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    tokenizer = ensure_trl_tokenizer_compat(tokenizer)
 
     model = AutoModelForCausalLM.from_pretrained(args.model, **model_kwargs)
     if args.load_in_4bit:
@@ -274,6 +275,12 @@ def build_completion_text(action: str, rationale: str, confidence: float) -> str
 def ensure_trl_model_compat(model: Any) -> None:
     if not hasattr(model, "warnings_issued") or not isinstance(getattr(model, "warnings_issued"), dict):
         setattr(model, "warnings_issued", {})
+
+
+def ensure_trl_tokenizer_compat(tokenizer: Any) -> Any:
+    if not hasattr(tokenizer, "tokenizer"):
+        setattr(tokenizer, "tokenizer", tokenizer)
+    return tokenizer
 
 
 def resolve_lora_target_modules(model: Any, requested: str) -> list[str]:
