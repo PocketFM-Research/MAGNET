@@ -122,6 +122,7 @@ def main() -> None:
         target_modules=target_modules,
     )
     model = get_peft_model(model, peft_config)
+    patch_gemma4_for_text_only_training(model)
     ensure_trl_model_compat(model)
 
     converted = [
@@ -281,6 +282,26 @@ def build_completion_text(action: str, rationale: str, confidence: float) -> str
 def ensure_trl_model_compat(model: Any) -> None:
     if not hasattr(model, "warnings_issued") or not isinstance(getattr(model, "warnings_issued"), dict):
         setattr(model, "warnings_issued", {})
+
+
+def patch_gemma4_for_text_only_training(model: Any) -> None:
+    if getattr(model, "_world_models_gemma4_text_only_patch", False):
+        return
+
+    original_forward = model.forward
+
+    def forward(*args: Any, **kwargs: Any) -> Any:
+        input_ids = kwargs.get("input_ids")
+        if input_ids is None and args:
+            input_ids = args[0]
+        if input_ids is not None and kwargs.get("mm_token_type_ids") is None:
+            import torch
+
+            kwargs["mm_token_type_ids"] = torch.zeros_like(input_ids)
+        return original_forward(*args, **kwargs)
+
+    model.forward = forward
+    setattr(model, "_world_models_gemma4_text_only_patch", True)
 
 
 def patch_trl_for_text_only_dpo(dpo_trainer_cls: Any) -> None:
