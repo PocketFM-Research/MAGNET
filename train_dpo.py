@@ -286,7 +286,7 @@ def resolve_lora_target_modules(model: Any, requested: str) -> list[str]:
     modules = [part.strip() for part in requested.split(",") if part.strip()]
     if not modules:
         raise ValueError("No valid LoRA target modules were provided.")
-    return modules
+    return expand_requested_target_modules(model, modules)
 
 
 def discover_lora_target_modules(model: Any, include_mlp: bool) -> list[str]:
@@ -319,11 +319,18 @@ def discover_lora_target_modules(model: Any, include_mlp: bool) -> list[str]:
     excluded_suffixes = {"lm_head", "embed_tokens", "tok_embeddings", "output"}
 
     discovered: list[str] = []
+    discovered_wrapped: list[str] = []
     for name, module in model.named_modules():
         if not name or "." not in name:
             continue
         suffix = name.rsplit(".", 1)[-1]
+        parent_name = name.rsplit(".", 1)[0]
+        parent_suffix = parent_name.rsplit(".", 1)[-1] if "." in parent_name else parent_name
         if suffix in excluded_suffixes:
+            continue
+        if suffix == "linear" and parent_suffix in candidate_suffixes and hasattr(module, "weight"):
+            if name not in discovered_wrapped:
+                discovered_wrapped.append(name)
             continue
         if suffix not in candidate_suffixes:
             continue
@@ -332,6 +339,9 @@ def discover_lora_target_modules(model: Any, include_mlp: bool) -> list[str]:
         if suffix not in discovered:
             discovered.append(suffix)
 
+    if discovered_wrapped:
+        return discovered_wrapped
+
     if discovered:
         return discovered
 
@@ -339,6 +349,24 @@ def discover_lora_target_modules(model: Any, include_mlp: bool) -> list[str]:
     if include_mlp:
         fallback.extend(["gate_proj", "up_proj", "down_proj"])
     return fallback
+
+
+def expand_requested_target_modules(model: Any, modules: list[str]) -> list[str]:
+    requested = set(modules)
+    expanded: list[str] = []
+    for name, module in model.named_modules():
+        if not name or "." not in name:
+            continue
+        suffix = name.rsplit(".", 1)[-1]
+        parent_name = name.rsplit(".", 1)[0]
+        parent_suffix = parent_name.rsplit(".", 1)[-1] if "." in parent_name else parent_name
+        if suffix == "linear" and parent_suffix in requested and hasattr(module, "weight"):
+            if name not in expanded:
+                expanded.append(name)
+
+    if expanded:
+        return expanded
+    return modules
 
 
 def split_rows(
