@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 from datetime import datetime, timezone
@@ -7,26 +8,68 @@ from fables import get_fable_definition
 from llm import build_action_llm, build_default_llm
 from pipeline import Config, Pipeline
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run the pocketfm world-model story pipeline.")
+    parser.add_argument(
+        "--story",
+        "--fable",
+        dest="fable_name",
+        default=os.getenv("FABLE_NAME", "radio"),
+        help="Built-in story/fable name to run. Falls back to FABLE_NAME if unset.",
+    )
+    parser.add_argument(
+        "--steps",
+        type=int,
+        default=int(os.getenv("MAX_STEPS", "30")),
+        help="Maximum number of simulation steps. Falls back to MAX_STEPS or 30.",
+    )
+    parser.add_argument(
+        "--max-plan-revisions",
+        type=int,
+        default=int(os.getenv("MAX_PLAN_REVISIONS", "1")),
+        help="Maximum critic-requested action revisions per character step.",
+    )
+    parser.add_argument(
+        "--use-rag",
+        action="store_true",
+        default=os.getenv("USE_RAG", "0").strip().lower() in {"1", "true", "yes"},
+        help="Enable memory retrieval for character prompts.",
+    )
+    parser.add_argument(
+        "--rag-k",
+        type=int,
+        default=int(os.getenv("RAG_K", "2")),
+        help="Number of memory snippets to retrieve when RAG is enabled.",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
     if not os.getenv("GEMINI_API_KEY"):
         raise RuntimeError("GEMINI_API_KEY is required.")
 
-    fable_name = os.getenv("FABLE_NAME", "radio")
-    fable = get_fable_definition(fable_name)
+    fable = get_fable_definition(args.fable_name)
     characters = fable.characters
 
     critic_llm = build_default_llm()
     action_model_path = os.getenv("ACTION_MODEL_PATH", "").strip()
     if action_model_path:
         action_llm = build_action_llm()
-        pipeline = Pipeline(llm=critic_llm, action_llm=action_llm)
+        pipeline = Pipeline(llm=critic_llm, action_llm=action_llm, use_rag=args.use_rag)
     else:
-        pipeline = Pipeline(llm=critic_llm)
+        pipeline = Pipeline(llm=critic_llm, use_rag=args.use_rag)
     env = WorldProxyEnv(fable=fable)
     result = pipeline.run(
         env=env,
         characters=characters,
-        cfg=Config(goal=fable.goal, max_steps=30, max_plan_revisions=1, use_rag=False, rag_k=2),
+        cfg=Config(
+            goal=fable.goal,
+            max_steps=args.steps,
+            max_plan_revisions=args.max_plan_revisions,
+            use_rag=args.use_rag,
+            rag_k=args.rag_k,
+        ),
     )
 
     graph_path = os.getenv("WORLD_GRAPH_OUTPUT_PATH", "final_world_graph.json")
