@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import statistics
 from pathlib import Path
 from typing import Any
 
@@ -53,10 +54,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lora-rank", type=int, default=16, help="LoRA rank.")
     parser.add_argument("--lora-alpha", type=int, default=16, help="LoRA alpha.")
     parser.add_argument(
-        "--default-confidence",
+        "--response-confidence",
         type=float,
-        default=0.7,
-        help="Confidence value injected into chosen/rejected JSON completions.",
+        default=0.5,
+        help=(
+            "Fallback confidence written into both chosen and rejected JSON completions when the "
+            "dataset row does not provide explicit confidences."
+        ),
+    )
+    parser.add_argument(
+        "--keep-rationales",
+        action="store_true",
+        help=(
+            "Include candidate rationales in DPO completions. Disabled by default so the action "
+            "tokens, not explanation style, dominate the preference loss."
+        ),
     )
     parser.add_argument(
         "--load-in-4bit",
@@ -129,10 +141,17 @@ def main() -> None:
         convert_row_to_preference_example(
             row,
             tokenizer=tokenizer,
-            default_confidence=args.default_confidence,
+            response_confidence=args.response_confidence,
+            keep_rationales=args.keep_rationales,
         )
         for row in rows
     ]
+    print_dataset_diagnostics(
+        source_rows=rows,
+        converted_rows=converted,
+        keep_rationales=args.keep_rationales,
+        response_confidence=args.response_confidence,
+    )
     train_rows, eval_rows = split_rows(converted, eval_fraction=args.eval_fraction, seed=args.seed)
     train_dataset = Dataset.from_list(train_rows)
     eval_dataset = Dataset.from_list(eval_rows) if eval_rows else None
@@ -211,7 +230,8 @@ def load_rows(path: Path, limit: int = 0) -> list[dict[str, Any]]:
 def convert_row_to_preference_example(
     row: dict[str, Any],
     tokenizer: Any,
-    default_confidence: float,
+    response_confidence: float,
+    keep_rationales: bool,
 ) -> dict[str, str]:
     payload = row.get("prompt", {})
     if not isinstance(payload, dict):
@@ -232,12 +252,14 @@ def convert_row_to_preference_example(
     chosen = build_completion_text(
         action=str(row.get("chosen", "")).strip(),
         rationale=str(row.get("chosen_rationale", "")).strip(),
-        confidence=default_confidence,
+        confidence=extract_confidence(row.get("chosen_confidence"), fallback=response_confidence),
+        include_rationale=keep_rationales,
     )
     rejected = build_completion_text(
         action=str(row.get("rejected", "")).strip(),
         rationale=str(row.get("rejected_rationale", "")).strip(),
-        confidence=max(0.0, min(1.0, default_confidence - 0.2)),
+        confidence=extract_confidence(row.get("rejected_confidence"), fallback=response_confidence),
+        include_rationale=keep_rationales,
     )
     return {
         "prompt": prompt,
@@ -270,13 +292,69 @@ def build_chat_prompt(tokenizer: Any, system_prompt: str, user_prompt: str) -> s
         )
 
 
-def build_completion_text(action: str, rationale: str, confidence: float) -> str:
+def build_completion_text(
+    action: str,
+    rationale: str,
+    confidence: float,
+    include_rationale: bool,
+) -> str:
     payload = {
         "action": action or "look around",
         "confidence": round(max(0.0, min(1.0, confidence)), 2),
-        "rationale": rationale or "fallback",
+        "rationale": (rationale or "fallback") if include_rationale else "",
     }
     return json.dumps(payload, ensure_ascii=True)
+
+
+def extract_confidence(value: Any, fallback: float) -> float:
+    if isinstance(value, (int, float)):
+        return max(0.0, min(1.0, float(value)))
+    if isinstance(value, str):
+        try:
+            return max(0.0, min(1.0, float(value)))
+        except ValueError:
+            pass
+    return max(0.0, min(1.0, fallback))
+
+
+def print_dataset_diagnostics(
+    source_rows: list[dict[str, Any]],
+    converted_rows: list[dict[str, str]],
+    keep_rationales: bool,
+    response_confidence: float,
+) -> None:
+    chosen_lengths = [len(row["chosen"]) for row in converted_rows]
+    rejected_lengths = [len(row["rejected"]) for row in converted_rows]
+    preferred_second = sum(
+        1 for row in source_rows if row.get("judge", {}).get("chosen_index") == 1
+    )
+    source_has_confidences = any(
+        row.get("chosen_confidence") is not None or row.get("rejected_confidence") is not None
+        for row in source_rows
+    )
+
+    summary = {
+        "rows": len(source_rows),
+        "preferred_candidate_1_rows": preferred_second,
+        "preferred_candidate_1_fraction": round(preferred_second / max(1, len(source_rows)), 3),
+        "chosen_completion_len_avg": round(statistics.mean(chosen_lengths), 1),
+        "rejected_completion_len_avg": round(statistics.mean(rejected_lengths), 1),
+        "keep_rationales": keep_rationales,
+        "source_has_explicit_confidences": source_has_confidences,
+        "fallback_response_confidence": round(max(0.0, min(1.0, response_confidence)), 2),
+    }
+    print(json.dumps({"dataset_diagnostics": summary}, indent=2))
+
+    if not source_has_confidences:
+        print(
+            "Dataset warning: no explicit chosen/rejected confidences found; "
+            "using the same fallback confidence for both sides to avoid a shortcut."
+        )
+    if not keep_rationales:
+        print(
+            "Dataset warning: rationales are omitted from DPO completions by default so "
+            "the loss focuses on action quality instead of explanation style."
+        )
 
 
 def ensure_trl_model_compat(model: Any) -> None:

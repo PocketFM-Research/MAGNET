@@ -224,7 +224,7 @@ def build_default_llm() -> GeminiLLM:
 class ActionAdapterLLM:
     adapter_path: str = "artifacts/gemma-action-dpo"
     base_model: str | None = None
-    max_new_tokens: int = 192
+    max_new_tokens: int = 96
     temperature: float = 0.0
     load_in_4bit: bool = False
     output_log_path: str | None = "llm_output.txt"
@@ -248,25 +248,42 @@ class ActionAdapterLLM:
         if model_device is not None:
             inputs = {key: value.to(model_device) for key, value in inputs.items()}
 
-        effective_temperature = self.temperature if self.temperature > 0 else temperature
-        generation_kwargs: dict[str, Any] = {
-            "max_new_tokens": self.max_new_tokens,
-            "pad_token_id": self._tokenizer.pad_token_id,
-            "eos_token_id": self._tokenizer.eos_token_id,
-        }
-        if effective_temperature > 0:
-            generation_kwargs["do_sample"] = True
-            generation_kwargs["temperature"] = effective_temperature
-        else:
-            generation_kwargs["do_sample"] = False
+        strict_prompt_text = self._build_prompt_text(
+            [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": user_prompt
+                    + "\nReturn a single compact JSON object only. "
+                    + "Keep action under 30 words and rationale under 12 words.",
+                },
+            ]
+        )
+        strict_inputs = self._tokenizer(strict_prompt_text, return_tensors="pt")
+        if model_device is not None:
+            strict_inputs = {key: value.to(model_device) for key, value in strict_inputs.items()}
 
-        output_ids = self._model.generate(**inputs, **generation_kwargs)
-        prompt_length = int(inputs["input_ids"].shape[-1])
+        generation_kwargs = self._build_generation_kwargs(
+            temperature=0.0,
+            max_new_tokens=min(self.max_new_tokens, 72),
+        )
+        output_ids = self._model.generate(**strict_inputs, **generation_kwargs)
+        prompt_length = int(strict_inputs["input_ids"].shape[-1])
         generated_ids = output_ids[0][prompt_length:]
         content = self._tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
-
+        content = self._sanitize_generated_content(content)
         self._append_output_log(system_prompt, user_prompt, content)
-        return self._parse_json_object(content)
+
+        try:
+            payload = self._parse_json_object(content)
+            return self._normalize_action_payload(payload)
+        except LLMError:
+            pass
+
+        recovered = self._recover_action_payload(content)
+        if recovered is not None:
+            return self._normalize_action_payload(recovered)
+        raise LLMError(f"Action adapter returned non-JSON content: {content[:300]}")
 
     def _append_output_log(self, system_prompt: str, user_prompt: str, content: str) -> None:
         if not self.output_log_path:
@@ -350,6 +367,22 @@ class ActionAdapterLLM:
         resolved_model_name = f"action-dpo:{adapter_path.as_posix()}"
         return model, tokenizer, resolved_model_name
 
+    def _build_generation_kwargs(self, temperature: float, max_new_tokens: int) -> dict[str, Any]:
+        generation_kwargs: dict[str, Any] = {
+            "max_new_tokens": max_new_tokens,
+            "pad_token_id": self._tokenizer.pad_token_id,
+            "eos_token_id": self._tokenizer.eos_token_id,
+            "repetition_penalty": 1.15,
+            "no_repeat_ngram_size": 4,
+        }
+        if temperature > 0:
+            generation_kwargs["do_sample"] = True
+            generation_kwargs["temperature"] = temperature
+            generation_kwargs["top_p"] = 0.9
+        else:
+            generation_kwargs["do_sample"] = False
+        return generation_kwargs
+
     @staticmethod
     def _resolve_base_model(adapter_path: Path) -> str | None:
         config_path = adapter_path / "adapter_config.json"
@@ -401,6 +434,67 @@ class ActionAdapterLLM:
             return recovered
 
         raise LLMError(f"Action adapter returned non-JSON content: {content[:300]}")
+
+    @staticmethod
+    def _sanitize_generated_content(content: str) -> str:
+        cleaned = content.strip()
+        if not cleaned:
+            return cleaned
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+        repeated_token_pattern = re.compile(r"\b([A-Za-z]{3,})\b(?:\s+\1\b){5,}", flags=re.IGNORECASE)
+        cleaned = repeated_token_pattern.sub(r"\1", cleaned)
+
+        json_object = ActionAdapterLLM._extract_json_object(cleaned)
+        if json_object is not None:
+            cleaned = json_object
+        return cleaned.strip()
+
+    @staticmethod
+    def _normalize_action_payload(payload: dict[str, Any]) -> dict[str, Any]:
+        action = str(payload.get("action", "")).strip()
+        rationale = str(payload.get("rationale", "")).strip()
+        confidence = payload.get("confidence", 0.5)
+
+        action = ActionAdapterLLM._collapse_repetition(action)
+        rationale = ActionAdapterLLM._collapse_repetition(rationale)
+        action = ActionAdapterLLM._truncate_words(action, 30) or "look around"
+        rationale = ActionAdapterLLM._truncate_words(rationale, 12)
+        confidence_value = ActionAdapterLLM._coerce_confidence(confidence)
+
+        return {
+            "action": action,
+            "confidence": confidence_value,
+            "rationale": rationale,
+        }
+
+    @staticmethod
+    def _collapse_repetition(text: str) -> str:
+        if not text:
+            return ""
+        text = re.sub(r"\s+", " ", text).strip()
+        text = re.sub(
+            r"\b([A-Za-z]{3,})\b(?:\s+\1\b){2,}",
+            r"\1",
+            text,
+            flags=re.IGNORECASE,
+        )
+        return text.strip(" ,")
+
+    @staticmethod
+    def _truncate_words(text: str, limit: int) -> str:
+        words = text.split()
+        if len(words) <= limit:
+            return text.strip()
+        return " ".join(words[:limit]).rstrip(" ,.;:") + "."
+
+    @staticmethod
+    def _coerce_confidence(value: Any) -> float:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            parsed = 0.5
+        return max(0.0, min(1.0, parsed))
 
     @staticmethod
     def _try_parse_json(content: str) -> dict[str, Any] | None:
@@ -484,8 +578,8 @@ class ActionAdapterLLM:
 def build_action_llm() -> ActionAdapterLLM:
     adapter_path = os.getenv("ACTION_MODEL_PATH", "artifacts/gemma-action-dpo")
     base_model = os.getenv("ACTION_MODEL_BASE")
-    max_new_tokens = int(os.getenv("ACTION_MODEL_MAX_NEW_TOKENS", "192"))
-    temperature = float(os.getenv("ACTION_MODEL_TEMPERATURE", "0.5"))
+    max_new_tokens = int(os.getenv("ACTION_MODEL_MAX_NEW_TOKENS", "96"))
+    temperature = float(os.getenv("ACTION_MODEL_TEMPERATURE", "0"))
     load_in_4bit = os.getenv("ACTION_MODEL_LOAD_IN_4BIT", "0").strip().lower() in {"1", "true", "yes"}
     output_log_path = os.getenv(
         "ACTION_MODEL_OUTPUT_LOG_PATH",
