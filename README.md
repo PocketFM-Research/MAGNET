@@ -1,67 +1,230 @@
 # pocketfm-world-models
 
-`pocketfm-world-models` is a small multi-agent story simulation for generating character-driven narratives with an LLM-backed world model.
+`pocketfm-world-models` is a multi-agent story simulation for generating character-driven narratives with an LLM-backed world model. It can run entirely through Gemini, or use a locally trained DPO action adapter for character action generation while Gemini continues to handle criticism, narration, and goal progression.
 
-The codebase currently runs a loop where:
+The loop is:
 
-- each character proposes a concrete next action
-- a critic checks whether that action is plausible and goal-relevant
-- a narrator selects the canonical actions for the current beat and writes the prose
-- the environment applies the selected state updates to a world graph
-- memory stores prior beats and retrieves relevant context for later decisions
+- each character proposes one concrete next action
+- a critic checks whether the action is plausible, in-character, non-repetitive, and goal-relevant
+- a narrator chooses which proposed actions become canonical story events
+- the environment applies selected `world_updates` to a graph-backed world state
+- optional RAG memory stores narrated beats and retrieves relevant prior context
 
 ## Current Behavior
 
-The repository currently supports several built-in story definitions:
+The default CLI entrypoint is [`run_pipeline.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/run_pipeline.py).
 
-- `maya story`
-- `wedding_weekend`
-- `restaurant_last_service`
-- `flood_rescue`
+Default runtime values:
 
-The default entrypoint in [`run_pipeline.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/run_pipeline.py) now uses:
+- story: `radio`, which maps to `radio_station_last_show`
+- max steps: `30`
+- max plan revisions: `1`
+- RAG: disabled unless `--use-rag` or `USE_RAG=1` is set
+- RAG retrieval count: `2`
 
-- `FABLE_NAME="maya story"` when unset
-- `max_steps=15`
-- `max_plan_revisions=1`
-- `rag_k=2`
-
-The default story is the flood-rescue scenario unless `FABLE_NAME` is set.
-
-## What The System Does
-
-- simulates a story over multiple timesteps
-- keeps world state in a `networkx.DiGraph`
-- tracks structured episodic memory with embedding retrieval via `llama-index`
-- calls Gemini in JSON mode for action generation, criticism, narration, and next-goal generation
-- exports the final world graph to JSON
-- appends prompts, outputs, and the final story to a log file
+Gemini is always required for critic, narrator, and follow-up goal generation. If `ACTION_MODEL_PATH` is set, character action generation uses the local DPO adapter loaded by `ActionAdapterLLM`; otherwise it uses Gemini too.
 
 ## Architecture
 
-- [`run_pipeline.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/run_pipeline.py): entrypoint that loads a fable, runs the pipeline, prints output, and writes logs/artifacts
-- [`pipeline.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/pipeline.py): orchestration loop for agents, narrator selection, goal progression, and memory writes
+- [`run_pipeline.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/run_pipeline.py): CLI entrypoint, story selection, model wiring, graph export, and final story logging
+- [`pipeline.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/pipeline.py): simulation loop, optional memory use, narrator selection, and goal progression
 - [`agents.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/agents.py): `CharacterAgent` and `NarratorAgent`
-- [`environment.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/environment.py): graph-backed world environment and state update logic
-- [`fables.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/fables.py): `FableDefinition` plus built-in story setups
-- [`memory.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/memory.py): structured memory entries, vector index creation, and retrieval
-- [`llm.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/llm.py): Gemini API wrapper
-- [`prompts.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/prompts.py): prompt templates for action, critic, narrator, and next-goal stages
+- [`environment.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/environment.py): `networkx.DiGraph` world state and protected state updates
+- [`fables.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/fables.py): built-in story definitions and aliases
+- [`prompts.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/prompts.py): action, critic, narrator, and next-goal prompts
+- [`llm.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/llm.py): Gemini client plus local DPO action-adapter inference
+- [`memory.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/memory.py): optional structured memory with embedding retrieval
+- [`generate_dpo_dataset.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/generate_dpo_dataset.py): preference dataset generation from story rollouts
+- [`train_dpo.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/train_dpo.py): LoRA DPO adapter training
 - [`sim_types.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/sim_types.py): shared dataclasses
+
+## Built-In Stories
+
+Supported names and aliases are registered in `get_fable_definition()`.
+
+- `maya story`: corner-store romance, internally `corner_store_last_week`
+- `wedding_weekend`: family wedding pressure story
+- `restaurant_last_service`: final dinner-service ensemble story
+- `flood_rescue`: floodwater rescue story, internally `flood_rescue_night`
+- `radio`: final radio broadcast story, internally `radio_station_last_show`
+- `codicil`: probate and missing-will story, internally `the_missing_codicil`
+
+Example:
+
+```bash
+python run_pipeline.py --story wedding_weekend --steps 20
+```
+
+## Setup
+
+```bash
+pip install -r requirements.txt
+```
+
+Core dependencies include:
+
+- `networkx`
+- `llama-index-core`
+- `llama-index-embeddings-huggingface`
+- `torch`
+- `transformers`
+- `peft`
+- `trl`
+- `datasets`
+- `bitsandbytes`
+
+Some DPO and local-adapter paths need Hugging Face model access and suitable local compute. GPU is strongly preferred for training.
+
+## Environment Variables
+
+General runtime:
+
+- `GEMINI_API_KEY`: required
+- `GEMINI_MODEL`: optional, defaults to `gemini-2.5-flash`
+- `GEMINI_BASE_URL`: optional, defaults to `https://generativelanguage.googleapis.com/v1beta`
+- `GEMINI_OUTPUT_LOG_PATH`: optional, defaults to `llm_output.txt`
+- `FABLE_NAME`: optional fallback story name for `run_pipeline.py`
+- `MAX_STEPS`: optional fallback for `--steps`, defaults to `30`
+- `MAX_PLAN_REVISIONS`: optional fallback for `--max-plan-revisions`, defaults to `1`
+- `USE_RAG`: optional, set to `1`, `true`, or `yes` to enable memory retrieval
+- `RAG_K`: optional fallback for `--rag-k`, defaults to `2`
+- `WORLD_GRAPH_OUTPUT_PATH`: optional, defaults to `final_world_graph.json`
+
+Local DPO action adapter:
+
+- `ACTION_MODEL_PATH`: path to a trained adapter; when set, character actions use the local adapter
+- `ACTION_MODEL_BASE`: optional base model override if it cannot be resolved from `adapter_config.json`
+- `ACTION_MODEL_MAX_NEW_TOKENS`: optional, defaults to `96`
+- `ACTION_MODEL_TEMPERATURE`: optional, defaults to `0`
+- `ACTION_MODEL_LOAD_IN_4BIT`: optional, set to `1`, `true`, or `yes` for 4-bit loading
+- `ACTION_MODEL_OUTPUT_LOG_PATH`: optional, defaults to `GEMINI_OUTPUT_LOG_PATH` or `llm_output.txt`
+
+## Running Stories
+
+Run the default radio story with Gemini-only action generation:
+
+```bash
+export GEMINI_API_KEY=your_api_key_here
+python run_pipeline.py
+```
+
+Run a specific story:
+
+```bash
+export GEMINI_API_KEY=your_api_key_here
+python run_pipeline.py --story flood_rescue --steps 25
+```
+
+Enable memory retrieval:
+
+```bash
+export GEMINI_API_KEY=your_api_key_here
+python run_pipeline.py --story radio --use-rag --rag-k 3
+```
+
+Run with a local DPO action adapter:
+
+```bash
+export GEMINI_API_KEY=your_api_key_here
+export ACTION_MODEL_PATH=artifacts/gemma-action-dpo
+python run_pipeline.py --story radio
+```
+
+## DPO Workflow
+
+The DPO workflow has two stages: generate preference data, then train a LoRA adapter.
+
+### 1. Generate Preference Data
+
+[`generate_dpo_dataset.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/generate_dpo_dataset.py) rolls out story episodes, samples two candidate actions per character, asks a pairwise judge to choose the better action, critiques the chosen action for world updates, and writes JSONL rows.
+
+Default output:
+
+- `artifacts/dpo_preferences.jsonl`
+
+Generate a fresh dataset:
+
+```bash
+export GEMINI_API_KEY=your_api_key_here
+python generate_dpo_dataset.py --fable radio --episodes 20 --max-steps 8 --overwrite
+```
+
+Useful options:
+
+- `--fable`: story name, defaults to `maya story`
+- `--episodes`: rollout count, defaults to `10`
+- `--max-steps`: maximum steps per rollout, defaults to `8`
+- `--output`: JSONL output path, defaults to `artifacts/dpo_preferences.jsonl`
+- `--overwrite`: replace the output file instead of appending
+- `--rag-k`: memory snippets per decision, defaults to `0`
+- `--temperature`: candidate action sampling temperature, defaults to `0.8`
+- `--max-new-goals`: follow-up goals per episode, defaults to `1`
+- `--seed`: candidate-order and retry seed, defaults to `42`
+
+Each JSONL row includes:
+
+- `episode`, `step`, and `character`
+- `prompt` payload used to rebuild the action prompt
+- `chosen` and `rejected` action strings
+- `chosen_rationale` and `rejected_rationale`
+- `judge` pairwise decision metadata
+- `chosen_eval` critic output for the chosen action
+
+### 2. Train A DPO Adapter
+
+[`train_dpo.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/train_dpo.py) converts the generated JSONL rows into TRL DPO examples and trains a LoRA adapter.
+
+Default input and output:
+
+- input: `artifacts/dpo_preferences.jsonl`
+- base model: `google/gemma-2-2b-it`
+- output adapter: `artifacts/gemma-action-dpo`
+
+Train with defaults:
+
+```bash
+python train_dpo.py
+```
+
+Train in 4-bit mode:
+
+```bash
+python train_dpo.py --load-in-4bit
+```
+
+Useful options:
+
+- `--dataset`: JSONL preference dataset path
+- `--model`: Hugging Face base model, defaults to `google/gemma-2-2b-it`
+- `--output`: adapter output directory
+- `--max-seq-length`: context length, defaults to `2048`
+- `--batch-size`: per-device train batch size, defaults to `2`
+- `--grad-accum`: gradient accumulation steps, defaults to `4`
+- `--epochs`: training epochs, defaults to `1.0`
+- `--lr`: learning rate, defaults to `5e-5`
+- `--beta`: DPO beta, defaults to `0.1`
+- `--eval-fraction`: held-out eval fraction, defaults to `0.05`
+- `--limit`: optional row cap for quick tests
+- `--lora-rank`: LoRA rank, defaults to `16`
+- `--lora-alpha`: LoRA alpha, defaults to `16`
+- `--keep-rationales`: include rationales in chosen/rejected completions
+- `--lora-target-modules`: `auto`, `attention-only`, or comma-separated module names
+
+By default, training omits rationales from completions so the preference loss focuses on the action text rather than explanation style. If the dataset lacks explicit confidence fields, the trainer writes the same fallback confidence into chosen and rejected completions to avoid creating an artificial shortcut.
 
 ## How A Step Works
 
 For each timestep:
 
-1. the pipeline reads the current world variables and active goal
-2. each character retrieves relevant memory snippets
-3. the character agent builds a compact prompt from persona, goal, curated world knowledge, the last two narrated scenes, and revision feedback when available
-4. the LLM proposes an action
-5. the critic decides whether that action should be revised and whether it advances or completes the goal
-6. the narrator selects a small subset of proposed actions and turns them into a paragraph
-7. only narrator-selected actions are applied to the environment
-8. the resulting beat is stored in memory
-9. if a selected action completes the goal, the narrator generates a follow-up goal
+1. the pipeline reads current world variables and the active goal
+2. each character optionally retrieves memory snippets when RAG is enabled
+3. the character agent builds an action prompt from persona, goal, curated world knowledge, recent scenes, memory snippets, and revision feedback when present
+4. the action LLM proposes JSON with `action`, `confidence`, and `rationale`
+5. the critic LLM evaluates the action and may request revision
+6. the narrator LLM selects a small subset of proposed actions and writes one scene paragraph
+7. selected actions are applied to the environment
+8. optional memory records the narrated beat
+9. if the current goal completes, the narrator LLM generates a follow-up goal
 
 ## World Model
 
@@ -80,7 +243,7 @@ Core world variables include:
 - `goal_history`
 - `goal_reached`
 
-The critic can also propose additional `world_updates`. Reserved keys are protected and cannot be overwritten through critic updates:
+Critic-provided `world_updates` can add or change story state. Protected keys cannot be overwritten through critic updates:
 
 - `turn`
 - `characters`
@@ -88,122 +251,30 @@ The critic can also propose additional `world_updates`. Reserved keys are protec
 - `current_goal`
 - `goal_history`
 
-## Built-In Stories
-
-### `maya story`
-
-This maps to the `corner_store_last_week` fable in [`fables.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/fables.py).
-
-Premise:
-
-`Maya must decide whether to risk a real romance with Omar before he gives an answer on a job offer that would take him away.`
-
-Characters:
-
-- `Maya`
-- `Rafael`
-- `Leah`
-- `Omar`
-
-Initial world state includes relationship tension, a job-offer deadline, and a neighborhood setting.
-
-### `wedding_weekend`
-
-Premise:
-
-`Before the ceremony begins, Eli must stop avoiding the truth and choose whether he will protect Sofia and Nina from Marianne's control or let the old family pattern ruin the marriage before it starts.`
-
-Characters:
-
-- `Nina`
-- `Eli`
-- `Sofia`
-- `Marianne`
-
-### `restaurant_last_service`
-
-Premise:
-
-`During the restaurant's final dinner service, Theo must decide whether to cling to control or hand real trust to Mara and Luis before the night collapses into one last beautiful disaster.`
-
-Characters:
-
-- `Theo`
-- `Mara`
-- `Luis`
-- `Jade`
-
-### `flood_rescue`
-
-Premise:
-
-`Elena and her team must evacuate passengers from a school bus stranded in floodwater before Marcus sacrifices himself to save the last children aboard.`
-
-Characters:
-
-- `Elena`
-- `Nico`
-- `Priya`
-- `Marcus`
-
-## Requirements
-
-- Python 3.10+
-- a valid `GEMINI_API_KEY`
-
-## Setup
-
-```bash
-pip install -r requirements.txt
-```
-
-## Environment Variables
-
-- `GEMINI_API_KEY`: required
-- `GEMINI_MODEL`: optional, defaults to `gemini-2.5-flash`
-- `GEMINI_BASE_URL`: optional, defaults to `https://generativelanguage.googleapis.com/v1beta`
-- `GEMINI_OUTPUT_LOG_PATH`: optional, defaults to `llm_output.txt`
-- `FABLE_NAME`: optional, defaults to `maya story`
-- `WORLD_GRAPH_OUTPUT_PATH`: optional, defaults to `final_world_graph.json`
-
-## Running
-
-Default run:
-
-```bash
-export GEMINI_API_KEY=your_api_key_here
-python run_pipeline.py
-```
-
-Run the wedding-weekend scenario explicitly:
-
-```bash
-export GEMINI_API_KEY=your_api_key_here
-export FABLE_NAME="wedding_weekend"
-python run_pipeline.py
-```
-
-Run the current default romance scenario explicitly:
-
-```bash
-export GEMINI_API_KEY=your_api_key_here
-export FABLE_NAME="maya story"
-python run_pipeline.py
-```
-
 ## Output
 
-The program prints:
+`run_pipeline.py` prints:
 
-- a summary dict with `done`, `steps`, `total_reward`, `world_vars`, and `world_graph_path`
-- a timeline of proposed actions, selected actions, narration, and canonical events
+- `done`
+- `steps`
+- `total_reward`
+- `world_vars`
+- `world_graph_path`
+- the event timeline
 - the final story paragraphs
 
-Artifacts written to disk:
+Artifacts:
 
-- `final_world_graph.json` by default for the exported NetworkX node-link graph
-- `llm_output.txt` by default for prompt/output logging
+- `final_world_graph.json`: exported NetworkX node-link graph by default
+- `llm_output.txt`: prompt/output log by default
+- `artifacts/dpo_preferences.jsonl`: default generated DPO preference dataset
+- `artifacts/gemma-action-dpo`: default trained DPO adapter directory
 
-At the end of a run, the final story is appended to the log file as a separate block.
+## Notes And Limitations
 
-
+- Gemini access is required even when using a local action adapter, because critic, narrator, and next-goal calls still use Gemini.
+- RAG memory is disabled by default and only initialized when requested.
+- The embedding backend may download local model assets on first use.
+- `StepResult.done` is not currently set to `True` by the environment, so runs usually stop by step limit rather than terminal state.
+- `_should_act_now()` currently always returns `True`, so every character proposes an action on every timestep.
+- DPO generation and training are experimental and depend heavily on the quality of pairwise preference judgments.
