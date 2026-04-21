@@ -117,6 +117,7 @@ def run_episode(
     memory = build_memory() if rag_k > 0 else None
     rows_written = 0
     new_goals_used = 0
+    goal_assigned_step = 1
 
     for step in range(1, max_steps + 1):
         world_before = env.get_world_vars()
@@ -206,6 +207,16 @@ def run_episode(
             )
 
         if not proposed_actions:
+            if step - goal_assigned_step + 1 >= 15:
+                goal_assigned_step = refresh_stale_goal(
+                    llm=llm,
+                    env=env,
+                    characters=characters,
+                    story=story,
+                    step=step,
+                    active_goal=active_goal,
+                    world_after=world_before,
+                )
             continue
 
         narrated_step = narrator.narrate_step(
@@ -216,6 +227,16 @@ def run_episode(
         )
         selected_actions = choose_selected_actions(proposed_actions, narrated_step.included_indices)
         if not selected_actions:
+            if step - goal_assigned_step + 1 >= 15:
+                goal_assigned_step = refresh_stale_goal(
+                    llm=llm,
+                    env=env,
+                    characters=characters,
+                    story=story,
+                    step=step,
+                    active_goal=active_goal,
+                    world_after=world_before,
+                )
             continue
 
         results = env.step_selected_actions(selected_actions)
@@ -246,6 +267,17 @@ def run_episode(
             )
             env.set_new_goal(new_goal)
             new_goals_used += 1
+            goal_assigned_step = step + 1
+        elif step - goal_assigned_step + 1 >= 15:
+            goal_assigned_step = refresh_stale_goal(
+                llm=llm,
+                env=env,
+                characters=characters,
+                story=story,
+                step=step,
+                active_goal=active_goal,
+                world_after=world_after,
+            )
 
     return rows_written
 
@@ -417,6 +449,7 @@ def generate_next_goal(
         world_vars=world_after,
         character_context=build_character_context(characters),
         goal_history=list(world_after.get("goal_history", [completed_goal])),
+        goal_status="completed",
     )
     try:
         goal_resp = llm.complete_json(goal_sys, goal_user)
@@ -425,6 +458,36 @@ def generate_next_goal(
 
     next_goal = str(goal_resp.get("goal", "")).strip()
     return next_goal or completed_goal
+
+
+def refresh_stale_goal(
+    llm: Any,
+    env: Any,
+    characters: list[CharacterProfile],
+    story: list[str],
+    step: int,
+    active_goal: str,
+    world_after: dict[str, Any],
+) -> int:
+    goal_sys, goal_user = build_new_goal_prompt(
+        completed_goal=active_goal,
+        recent_story=story[-3:],
+        world_vars=world_after,
+        character_context=build_character_context(characters),
+        goal_history=list(world_after.get("goal_history", [active_goal])),
+        goal_status="not achieved after 15 steps since assignment; replace it with a feasible goal for the current story state",
+    )
+    try:
+        goal_resp = llm.complete_json(goal_sys, goal_user)
+    except LLMError:
+        return step - 14
+
+    new_goal = str(goal_resp.get("goal", "")).strip()
+    if not new_goal or new_goal == active_goal:
+        return step - 14
+
+    env.set_new_goal(new_goal)
+    return step + 1
 
 
 def build_character_context(characters: list[CharacterProfile]) -> list[dict[str, Any]]:

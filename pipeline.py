@@ -11,6 +11,7 @@ class Config:
     goal: str = "create a compelling story that achieves the characters' goals"
     max_steps: int = 8
     max_plan_revisions: int = 2
+    stale_goal_steps: int = 15
     use_rag: bool = False
     rag_k: int = 3
 
@@ -41,6 +42,7 @@ class Pipeline:
         timeline: list[str] = []
         story: list[str] = []
         total_reward = 0.0
+        goal_assigned_step = 1
 
         for step in range(1, cfg.max_steps + 1):
             world_before = env.get_world_vars()
@@ -74,6 +76,18 @@ class Pipeline:
                 proposed_actions.append(decision)
 
             if not proposed_actions:
+                goal_assigned_step = self._refresh_stale_goal_if_needed(
+                    env=env,
+                    narrator=narrator,
+                    characters=characters,
+                    story=story,
+                    timeline=timeline,
+                    step=step,
+                    goal_assigned_step=goal_assigned_step,
+                    stale_goal_steps=cfg.stale_goal_steps,
+                    active_goal=active_goal,
+                    world_after=world_before,
+                )
                 continue
 
             narrated_step = narrator.narrate_step(
@@ -98,6 +112,18 @@ class Pipeline:
                     break
 
             if not selected_actions:
+                goal_assigned_step = self._refresh_stale_goal_if_needed(
+                    env=env,
+                    narrator=narrator,
+                    characters=characters,
+                    story=story,
+                    timeline=timeline,
+                    step=step,
+                    goal_assigned_step=goal_assigned_step,
+                    stale_goal_steps=cfg.stale_goal_steps,
+                    active_goal=active_goal,
+                    world_after=world_before,
+                )
                 continue
 
             results = env.step_selected_actions(selected_actions)
@@ -143,8 +169,22 @@ class Pipeline:
                 )
                 env.set_new_goal(new_goal)
                 world_after = env.get_world_vars()
+                goal_assigned_step = step + 1
                 timeline.append(
                     f"t={step} narrator=new_goal completed_goal={completed_goal} -> next_goal={new_goal}"
+                )
+            else:
+                goal_assigned_step = self._refresh_stale_goal_if_needed(
+                    env=env,
+                    narrator=narrator,
+                    characters=characters,
+                    story=story,
+                    timeline=timeline,
+                    step=step,
+                    goal_assigned_step=goal_assigned_step,
+                    stale_goal_steps=cfg.stale_goal_steps,
+                    active_goal=active_goal,
+                    world_after=world_after,
                 )
 
             if any(result.done for result in results):
@@ -186,6 +226,56 @@ class Pipeline:
                 }
             )
         return context
+
+    def _refresh_stale_goal_if_needed(
+        self,
+        env: WorldProxyEnv,
+        narrator: NarratorAgent,
+        characters: list[CharacterProfile],
+        story: list[str],
+        timeline: list[str],
+        step: int,
+        goal_assigned_step: int,
+        stale_goal_steps: int,
+        active_goal: str,
+        world_after: dict,
+    ) -> int:
+        if stale_goal_steps <= 0:
+            return goal_assigned_step
+
+        steps_since_assignment = step - goal_assigned_step + 1
+        if steps_since_assignment < stale_goal_steps:
+            return goal_assigned_step
+
+        goal_history = list(world_after.get("goal_history", [active_goal]))
+        try:
+            new_goal = narrator.generate_next_goal(
+                completed_goal=active_goal,
+                recent_story=story[-3:],
+                world_vars=world_after,
+                character_context=self._build_character_context(characters),
+                goal_history=goal_history,
+                goal_status=(
+                    f"not achieved after {steps_since_assignment} steps since assignment; "
+                    "replace it with a feasible goal for the current story state"
+                ),
+            )
+        except Exception:
+            return goal_assigned_step
+
+        new_goal = new_goal.strip()
+        if not new_goal or new_goal == active_goal:
+            return goal_assigned_step
+
+        env.set_new_goal(new_goal)
+        timeline.append(
+            (
+                f"t={step} narrator=stale_goal_refresh "
+                f"stale_goal={active_goal} steps_since_assignment={steps_since_assignment} "
+                f"-> next_goal={new_goal}"
+            )
+        )
+        return step + 1
 
     @staticmethod
     def _build_memory() -> object | None:

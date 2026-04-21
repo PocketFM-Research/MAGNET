@@ -225,6 +225,7 @@ For each timestep:
 7. selected actions are applied to the environment
 8. optional memory records the narrated beat
 9. if the current goal completes, the narrator LLM generates a follow-up goal
+10. if a goal has not completed after 15 timesteps since it became active, the narrator LLM replaces it with a feasible goal based on the current story state
 
 ## World Model
 

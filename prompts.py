@@ -101,6 +101,7 @@ def build_narrator_prompt(
         "Do not merely list what each character did one after another. Build a natural flow with transitions, reactions, and consequences. "
         "Do not use phrases like 'Act 1, Act 2, Act 3, ...', 'phase', 'stage', or 'timeline'. "
         "Do not add facts that conflict with the selected proposals or world vars. "
+        "Do not end the paragraph with a teaser or question for the next scene."
         "Choose a small subset of proposals that best advances or meaningfully develops the current story beat; it is normal to omit many proposals. "
         "Prefer 1-2 selected actions unless multiple actions are tightly linked by cause and effect or are needed to make the scene readable. "
         "If one selected action reaches the goal, do not select later unrelated actions in the same timestep. "
@@ -115,24 +116,28 @@ def build_new_goal_prompt(
     world_vars: dict[str, Any],
     character_context: list[dict[str, Any]],
     goal_history: list[str],
+    goal_status: str = "completed",
 ) -> tuple[str, str]:
     system = (
-        "You are a story narrator extending the story after a goal has just been achieved. "
+        "You are a story narrator extending or redirecting the story after a goal changes. "
         "Create the next concrete story goal so the narrative continues naturally from the current state."
     )
     user = (
         "TASK=new_goal\n"
-        f"Completed goal: {completed_goal}\n"
+        f"Previous goal: {completed_goal}\n"
+        f"Previous goal status: {goal_status}\n"
         f"Recent story paragraphs: {json.dumps(recent_story)}\n"
         f"World variables: {json.dumps(world_vars, sort_keys=True)}\n"
         f"Available characters: {json.dumps(character_context, sort_keys=True)}\n"
         f"Goal history: {json.dumps(goal_history)}\n"
-        "Write a new story goal that follows from the completed one, raises or redirects the stakes, "
-        "does not repeat past goals, and remains achievable through future character actions. "
+        "Write a new story goal that follows from the story's current state, raises or redirects the stakes, "
+        "does not repeat past goals, and remains feasible to complete through future character actions. "
+        "If the previous goal stalled before completion, choose a goal that expands the story and can be achieved from where the story is now "
+        "instead of forcing the old goal to continue unchanged. "
         "You may shift attention to an available character who was not central to the last goal, "
         "but the new goal must still grow out of the recent story and current world state. "
         "When introducing a less-used character, make that character's motive or ability relevant to the next conflict. "
-        "Avoid repeating the completed goal verbatim or ending the story. "
+        "Avoid repeating the previous goal verbatim or ending the story. "
         "Return JSON keys: goal (string), rationale (string)."
     )
     return system, user

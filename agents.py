@@ -218,6 +218,7 @@ class NarratorAgent:
         world_vars: dict,
         character_context: list[dict],
         goal_history: list[str],
+        goal_status: str = "completed",
     ) -> str:
         goal_sys, goal_user = build_new_goal_prompt(
             completed_goal=completed_goal,
@@ -225,6 +226,7 @@ class NarratorAgent:
             world_vars=world_vars,
             character_context=character_context,
             goal_history=goal_history,
+            goal_status=goal_status,
         )
         goal_resp = self.llm.complete_json(goal_sys, goal_user)
 
