@@ -264,7 +264,7 @@ class ActionAdapterLLM:
             strict_inputs = {key: value.to(model_device) for key, value in strict_inputs.items()}
 
         generation_kwargs = self._build_generation_kwargs(
-            temperature=0.0,
+            temperature=self.temperature,
             max_new_tokens=min(self.max_new_tokens, 72),
         )
         output_ids = self._model.generate(**strict_inputs, **generation_kwargs)
@@ -579,7 +579,7 @@ def build_action_llm() -> ActionAdapterLLM:
     adapter_path = os.getenv("ACTION_MODEL_PATH", "artifacts/gemma-action-dpo")
     base_model = os.getenv("ACTION_MODEL_BASE")
     max_new_tokens = int(os.getenv("ACTION_MODEL_MAX_NEW_TOKENS", "96"))
-    temperature = float(os.getenv("ACTION_MODEL_TEMPERATURE", "0"))
+    temperature = float(os.getenv("ACTION_MODEL_TEMPERATURE", "0.3"))
     load_in_4bit = os.getenv("ACTION_MODEL_LOAD_IN_4BIT", "0").strip().lower() in {"1", "true", "yes"}
     output_log_path = os.getenv(
         "ACTION_MODEL_OUTPUT_LOG_PATH",
