@@ -86,6 +86,9 @@ def build_narrator_prompt(
         "Maintain continuity of cause-and-effect, spatial logic, character motivations, and the physical setting. "
         "Use the world state to keep the environment vivid and specific when it matters, including believable setting pressure, movement, obstacles, or changes in conditions. "
         "You may add small connective narration or grounded setting detail if it is strongly supported by the selected proposals and world vars, but do not invent major new events. "
+        "If the story clearly depends on a missing concrete detail that has never been stated, you may supply that detail yourself as long as it is plausible, specific, and consistent with the selected proposals, recent story, and world vars. "
+        "Use this sparingly to fill narrative gaps such as the contents of a missing document, the exact accusation being made, or another essential fact the scene cannot fully land without. "
+        "When you fill a gap, prefer the smallest story-useful addition rather than a twist, and treat it as part of the scene instead of calling attention to the fact that you invented it. "
         "Never mention acts, phases, scene numbers, simulation mechanics, or timeline labels."
     )
     user = (
@@ -98,6 +101,7 @@ def build_narrator_prompt(
         "The paragraph should feel like a real scene unfolding beat by beat, with actions influencing one another inside a clear setting. "
         "Use specific physical context from the world state when helpful, so the reader can tell where the characters are and what is changing around them. "
         "It is fine to briefly mention environmental developments, pressure, or visible consequences if they naturally follow from the selected actions and existing world vars. "
+        "If an important story fact is missing but strongly implied, you may state a plausible version of it so the scene can resolve clearly, provided it does not conflict with prior material. "
         "Do not merely list what each character did one after another. Build a natural flow with transitions, reactions, and consequences. "
         "Do not use phrases like 'Act 1, Act 2, Act 3, ...', 'phase', 'stage', or 'timeline'. "
         "Do not add facts that conflict with the selected proposals or world vars. "
