@@ -11,6 +11,24 @@ from urllib import error, request
 class LLMError(RuntimeError):
     pass
 
+
+def _parse_json_object_with_repair(content: str, provider_name: str) -> dict[str, Any]:
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError as exc:
+        repaired = GeminiLLM._repair_json_text(content)
+        if repaired != content:
+            try:
+                parsed = json.loads(repaired)
+            except json.JSONDecodeError:
+                raise LLMError(f"{provider_name} returned non-JSON content: {content[:300]}") from exc
+        else:
+            raise LLMError(f"{provider_name} returned non-JSON content: {content[:300]}") from exc
+
+    if not isinstance(parsed, dict):
+        raise LLMError(f"{provider_name} returned JSON that was not an object: {type(parsed).__name__}")
+    return parsed
+
 @dataclass
 class GeminiLLM:
     api_key: str
@@ -93,21 +111,7 @@ class GeminiLLM:
 
     @staticmethod
     def _parse_json_object(content: str) -> dict[str, Any]:
-        try:
-            parsed = json.loads(content)
-        except json.JSONDecodeError as exc:
-            repaired = GeminiLLM._repair_json_text(content)
-            if repaired != content:
-                try:
-                    parsed = json.loads(repaired)
-                except json.JSONDecodeError:
-                    raise LLMError(f"Gemini returned non-JSON content: {content[:300]}") from exc
-            else:
-                raise LLMError(f"Gemini returned non-JSON content: {content[:300]}") from exc
-
-        if not isinstance(parsed, dict):
-            raise LLMError(f"Gemini returned JSON that was not an object: {type(parsed).__name__}")
-        return parsed
+        return _parse_json_object_with_repair(content, "Gemini")
 
     @staticmethod
     def _repair_json_text(content: str) -> str:
@@ -204,20 +208,177 @@ class GeminiLLM:
         return f"Invalid Gemini response: {prefix}{detail_suffix}."
 
 
-def build_default_llm() -> GeminiLLM:
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise LLMError("GEMINI_API_KEY is required.")
+@dataclass
+class AnthropicLLM:
+    api_key: str
+    model: str = "claude-opus-4-1"
+    base_url: str = "https://api.anthropic.com/v1"
+    timeout_seconds: int = 45
+    output_log_path: str | None = "llm_output.txt"
+    max_output_tokens: int = 2048
+    anthropic_version: str = "2023-06-01"
 
-    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-    base_url = os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta")
-    output_log_path = os.getenv("GEMINI_OUTPUT_LOG_PATH", "llm_output.txt")
-    return GeminiLLM(
-        api_key=api_key,
-        model=model,
-        base_url=base_url,
-        output_log_path=output_log_path,
+    def complete_json(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.1,
+    ) -> dict[str, Any]:
+        url = f"{self.base_url.rstrip('/')}/messages"
+        payload = {
+            "model": self.model,
+            "max_tokens": self.max_output_tokens,
+            "temperature": temperature,
+            "system": system_prompt,
+            "messages": [
+                {"role": "user", "content": user_prompt},
+            ],
+        }
+        body = json.dumps(payload).encode("utf-8")
+        req = request.Request(
+            url,
+            data=body,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": self.api_key,
+                "anthropic-version": self.anthropic_version,
+            },
+        )
+
+        try:
+            with request.urlopen(req, timeout=self.timeout_seconds) as resp:
+                raw = resp.read().decode("utf-8")
+        except error.HTTPError as exc:
+            raw = exc.read().decode("utf-8", errors="replace")
+            raise LLMError(self._build_http_error_message(exc.code, raw)) from exc
+
+        parsed = json.loads(raw)
+        content = self._extract_text(parsed)
+        if content is None:
+            raise LLMError(self._build_invalid_response_message(parsed, "missing text content"))
+
+        self._append_output_log(system_prompt, user_prompt, content)
+        return _parse_json_object_with_repair(content, "Anthropic")
+
+    def _append_output_log(self, system_prompt: str, user_prompt: str, content: str) -> None:
+        if not self.output_log_path:
+            return
+
+        timestamp = datetime.now(timezone.utc).isoformat()
+        block = (
+            f"[{timestamp}] model={self.model}\n"
+            "=== SYSTEM PROMPT ===\n"
+            f"{system_prompt}\n"
+            "=== USER PROMPT ===\n"
+            f"{user_prompt}\n"
+            "=== LLM OUTPUT ===\n"
+            f"{content}\n"
+            "=== END ===\n\n"
+        )
+        try:
+            with open(self.output_log_path, "a", encoding="utf-8") as handle:
+                handle.write(block)
+        except OSError:
+            pass
+
+    @staticmethod
+    def _extract_text(parsed: dict[str, Any]) -> str | None:
+        content_list = parsed.get("content")
+        if not isinstance(content_list, list):
+            return None
+        text_parts: list[str] = []
+        for part in content_list:
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") != "text":
+                continue
+            text = part.get("text")
+            if isinstance(text, str) and text.strip():
+                text_parts.append(text)
+        if not text_parts:
+            return None
+        return "".join(text_parts)
+
+    @staticmethod
+    def _build_http_error_message(status_code: int, raw: str) -> str:
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            snippet = raw[:300].strip()
+            return f"Anthropic HTTP {status_code}: {snippet or 'empty response body'}"
+        return AnthropicLLM._build_invalid_response_message(parsed, f"HTTP {status_code}")
+
+    @staticmethod
+    def _build_invalid_response_message(parsed: dict[str, Any], prefix: str) -> str:
+        details: list[str] = []
+        stop_reason = parsed.get("stop_reason")
+        stop_type = parsed.get("type")
+        error_obj = parsed.get("error")
+        if stop_reason:
+            details.append(f"stop_reason={stop_reason}")
+        if stop_type:
+            details.append(f"type={stop_type}")
+        if error_obj:
+            details.append(f"error={json.dumps(error_obj, ensure_ascii=True)}")
+        detail_suffix = f" ({'; '.join(details)})" if details else ""
+        return f"Invalid Anthropic response: {prefix}{detail_suffix}."
+
+
+def _normalize_provider_name(raw_provider: str | None) -> str:
+    provider = (raw_provider or "").strip().lower()
+    if provider in {"", "gemini", "google"}:
+        return "gemini"
+    if provider in {"anthropic", "claude", "opus"}:
+        return "anthropic"
+    raise LLMError(f"Unsupported LLM provider: {raw_provider}")
+
+
+def _build_hosted_llm(
+    provider: str,
+    model: str | None = None,
+    output_log_path: str | None = None,
+) -> GeminiLLM | AnthropicLLM:
+    normalized_provider = _normalize_provider_name(provider)
+
+    if normalized_provider == "gemini":
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise LLMError("GEMINI_API_KEY is required for Gemini provider.")
+        resolved_model = model or os.getenv("LLM_MODEL") or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        base_url = os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta")
+        resolved_output_log_path = output_log_path or os.getenv("GEMINI_OUTPUT_LOG_PATH", "llm_output.txt")
+        return GeminiLLM(
+            api_key=api_key,
+            model=resolved_model,
+            base_url=base_url,
+            output_log_path=resolved_output_log_path,
+        )
+
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise LLMError("ANTHROPIC_API_KEY is required for Anthropic provider.")
+    resolved_model = model or os.getenv("LLM_MODEL") or os.getenv("ANTHROPIC_MODEL", "claude-opus-4-1")
+    base_url = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1")
+    resolved_output_log_path = output_log_path or os.getenv(
+        "ANTHROPIC_OUTPUT_LOG_PATH",
+        os.getenv("GEMINI_OUTPUT_LOG_PATH", "llm_output.txt"),
     )
+    max_output_tokens = int(os.getenv("ANTHROPIC_MAX_OUTPUT_TOKENS", "2048"))
+    anthropic_version = os.getenv("ANTHROPIC_VERSION", "2023-06-01")
+    return AnthropicLLM(
+        api_key=api_key,
+        model=resolved_model,
+        base_url=base_url,
+        output_log_path=resolved_output_log_path,
+        max_output_tokens=max_output_tokens,
+        anthropic_version=anthropic_version,
+    )
+
+
+def build_default_llm() -> GeminiLLM | AnthropicLLM:
+    provider = os.getenv("LLM_PROVIDER", "gemini")
+    return _build_hosted_llm(provider=provider)
 
 
 @dataclass
@@ -575,8 +736,23 @@ class ActionAdapterLLM:
             return None
 
 
-def build_action_llm() -> ActionAdapterLLM:
-    adapter_path = os.getenv("ACTION_MODEL_PATH", "artifacts/gemma-action-dpo")
+def build_action_llm(default_llm: object | None = None) -> object:
+    adapter_path = os.getenv("ACTION_MODEL_PATH", "").strip()
+    if not adapter_path:
+        provider = _normalize_provider_name(os.getenv("ACTION_LLM_PROVIDER", os.getenv("LLM_PROVIDER", "gemini")))
+        model = os.getenv("ACTION_LLM_MODEL") or None
+        output_log_path = os.getenv(
+            "ACTION_MODEL_OUTPUT_LOG_PATH",
+            os.getenv("GEMINI_OUTPUT_LOG_PATH", "llm_output.txt"),
+        )
+        if default_llm is not None and provider == _normalize_provider_name(os.getenv("LLM_PROVIDER", "gemini")) and not model:
+            return default_llm
+        return _build_hosted_llm(
+            provider=provider,
+            model=model,
+            output_log_path=output_log_path,
+        )
+
     base_model = os.getenv("ACTION_MODEL_BASE")
     max_new_tokens = int(os.getenv("ACTION_MODEL_MAX_NEW_TOKENS", "96"))
     temperature = float(os.getenv("ACTION_MODEL_TEMPERATURE", "0.3"))
