@@ -1,6 +1,6 @@
 # pocketfm-world-models
 
-`pocketfm-world-models` is a multi-agent story simulation for generating character-driven narratives with an LLM-backed world model. It can run entirely through Gemini, or use a locally trained DPO action adapter for character action generation while Gemini continues to handle criticism, narration, and goal progression.
+`pocketfm-world-models` is a multi-agent story simulation for generating character-driven narratives with an LLM-backed world model. By default it runs entirely through Gemini, but it can also use Anthropic-hosted models for the full pipeline or a locally trained DPO action adapter for character action generation.
 
 The loop is:
 
@@ -16,13 +16,13 @@ The default CLI entrypoint is [`run_pipeline.py`](/Users/chloeho/Documents/pocke
 
 Default runtime values:
 
-- story: `radio`, which maps to `radio_station_last_show`
+- story: `missing_will`, which maps to `the_missing_codicil`
 - max steps: `30`
 - max plan revisions: `1`
 - RAG: disabled unless `--use-rag` or `USE_RAG=1` is set
 - RAG retrieval count: `2`
 
-Gemini is always required for critic, narrator, and follow-up goal generation. If `ACTION_MODEL_PATH` is set, character action generation uses the local DPO adapter loaded by `ActionAdapterLLM`; otherwise it uses Gemini too.
+By default, critic, narrator, next-goal generation, and character actions all use Gemini 2.5 Flash. If `LLM_PROVIDER=anthropic` is set, the hosted pipeline switches to Anthropic instead. If `ACTION_MODEL_PATH` is set, character action generation uses the local DPO adapter loaded by `ActionAdapterLLM` regardless of the hosted provider used for critic, narrator, and follow-up goal generation.
 
 ## Architecture
 
@@ -47,7 +47,7 @@ Supported names and aliases are registered in `get_fable_definition()`.
 - `restaurant_last_service`: final dinner-service ensemble story
 - `flood_rescue`: floodwater rescue story, internally `flood_rescue_night`
 - `radio`: final radio broadcast story, internally `radio_station_last_show`
-- `codicil`: probate and missing-will story, internally `the_missing_codicil`
+- `missing_will` or `codicil`: probate and missing-will story, internally `the_missing_codicil`
 
 Example:
 
@@ -79,10 +79,18 @@ Some DPO and local-adapter paths need Hugging Face model access and suitable loc
 
 General runtime:
 
-- `GEMINI_API_KEY`: required
+- `LLM_PROVIDER`: optional hosted provider selector, defaults to `gemini`; supported values include `gemini` and `anthropic`
+- `LLM_MODEL`: optional hosted model override shared by critic, narrator, and next-goal generation
+- `GEMINI_API_KEY`: required when `LLM_PROVIDER=gemini` or omitted
 - `GEMINI_MODEL`: optional, defaults to `gemini-2.5-flash`
 - `GEMINI_BASE_URL`: optional, defaults to `https://generativelanguage.googleapis.com/v1beta`
 - `GEMINI_OUTPUT_LOG_PATH`: optional, defaults to `llm_output.txt`
+- `ANTHROPIC_API_KEY`: required when `LLM_PROVIDER=anthropic`
+- `ANTHROPIC_MODEL`: optional Anthropic model default, defaults to `claude-opus-4-1`
+- `ANTHROPIC_BASE_URL`: optional, defaults to `https://api.anthropic.com/v1`
+- `ANTHROPIC_OUTPUT_LOG_PATH`: optional Anthropic log path override
+- `ANTHROPIC_MAX_OUTPUT_TOKENS`: optional, defaults to `2048`
+- `ANTHROPIC_VERSION`: optional, defaults to `2023-06-01`
 - `FABLE_NAME`: optional fallback story name for `run_pipeline.py`
 - `MAX_STEPS`: optional fallback for `--steps`, defaults to `30`
 - `MAX_PLAN_REVISIONS`: optional fallback for `--max-plan-revisions`, defaults to `1`
@@ -92,19 +100,30 @@ General runtime:
 
 Local DPO action adapter:
 
+- `ACTION_LLM_PROVIDER`: optional hosted provider override for character actions when not using a local adapter; falls back to `LLM_PROVIDER`
+- `ACTION_LLM_MODEL`: optional hosted model override for character actions when not using a local adapter
 - `ACTION_MODEL_PATH`: path to a trained adapter; when set, character actions use the local adapter
 - `ACTION_MODEL_BASE`: optional base model override if it cannot be resolved from `adapter_config.json`
 - `ACTION_MODEL_MAX_NEW_TOKENS`: optional, defaults to `96`
 - `ACTION_MODEL_TEMPERATURE`: optional, defaults to `0.3`
 - `ACTION_MODEL_LOAD_IN_4BIT`: optional, set to `1`, `true`, or `yes` for 4-bit loading
-- `ACTION_MODEL_OUTPUT_LOG_PATH`: optional, defaults to `GEMINI_OUTPUT_LOG_PATH` or `llm_output.txt`
+- `ACTION_MODEL_OUTPUT_LOG_PATH`: optional action-model log path override; defaults to `GEMINI_OUTPUT_LOG_PATH` or `llm_output.txt`
 
 ## Running Stories
 
-Run the default radio story with Gemini-only action generation:
+Run the default missing-will story with Gemini-only action generation:
 
 ```bash
 export GEMINI_API_KEY=your_api_key_here
+python run_pipeline.py
+```
+
+Run the full hosted pipeline on Anthropic Opus:
+
+```bash
+export LLM_PROVIDER=anthropic
+export ANTHROPIC_API_KEY=your_api_key_here
+export ANTHROPIC_MODEL=claude-opus-4-1
 python run_pipeline.py
 ```
 
@@ -128,6 +147,27 @@ Run with a local DPO action adapter:
 export GEMINI_API_KEY=your_api_key_here
 export ACTION_MODEL_PATH=artifacts/gemma-action-dpo
 python run_pipeline.py --story radio
+```
+
+Run Anthropic for critic, narrator, and next-goal generation while keeping the local Gemma adapter for actions:
+
+```bash
+export LLM_PROVIDER=anthropic
+export ANTHROPIC_API_KEY=your_api_key_here
+export ANTHROPIC_MODEL=claude-opus-4-1
+export ACTION_MODEL_PATH=artifacts/gemma4-action-dpo
+python run_pipeline.py --story missing_will
+```
+
+Run Anthropic for actions too, without a local adapter:
+
+```bash
+export LLM_PROVIDER=anthropic
+export ANTHROPIC_API_KEY=your_api_key_here
+export ANTHROPIC_MODEL=claude-opus-4-1
+export ACTION_LLM_PROVIDER=anthropic
+export ACTION_LLM_MODEL=claude-opus-4-1
+python run_pipeline.py --story missing_will
 ```
 
 ## DPO Workflow
@@ -273,7 +313,7 @@ Artifacts:
 
 ## Notes And Limitations
 
-- Gemini access is required even when using a local action adapter, because critic, narrator, and next-goal calls still use Gemini.
+- A hosted LLM provider is still required even when using a local action adapter, because critic, narrator, and next-goal calls continue to use the configured hosted model.
 - RAG memory is disabled by default and only initialized when requested.
 - The embedding backend may download local model assets on first use.
 - `StepResult.done` is not currently set to `True` by the environment, so runs usually stop by step limit rather than terminal state.

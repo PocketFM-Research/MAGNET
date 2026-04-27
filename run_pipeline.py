@@ -14,7 +14,7 @@ def parse_args() -> argparse.Namespace:
         "--story",
         "--fable",
         dest="fable_name",
-        default=os.getenv("FABLE_NAME", "radio"),
+        default=os.getenv("FABLE_NAME", "missing_will"),
         help="Built-in story/fable name to run. Falls back to FABLE_NAME if unset.",
     )
     parser.add_argument(
@@ -46,19 +46,12 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    if not os.getenv("GEMINI_API_KEY"):
-        raise RuntimeError("GEMINI_API_KEY is required.")
-
     fable = get_fable_definition(args.fable_name)
     characters = fable.characters
 
     critic_llm = build_default_llm()
-    action_model_path = os.getenv("ACTION_MODEL_PATH", "").strip()
-    if action_model_path:
-        action_llm = build_action_llm()
-        pipeline = Pipeline(llm=critic_llm, action_llm=action_llm, use_rag=args.use_rag)
-    else:
-        pipeline = Pipeline(llm=critic_llm, use_rag=args.use_rag)
+    action_llm = build_action_llm(default_llm=critic_llm)
+    pipeline = Pipeline(llm=critic_llm, action_llm=action_llm, use_rag=args.use_rag)
     env = WorldProxyEnv(fable=fable)
     result = pipeline.run(
         env=env,
