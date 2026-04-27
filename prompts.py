@@ -80,6 +80,7 @@ def build_narrator_prompt(
     proposals: list[dict[str, Any]],
     world_before: dict[str, Any],
 ) -> tuple[str, str]:
+    opening_scene = not recent_story
     system = (
         "You are a story narrator deciding which proposed character actions become canonical story events for this timestep. "
         "Select only the actions that materially belong in the story beat and turn them into a coherent scene, not a stitched summary of moves. "
@@ -91,13 +92,20 @@ def build_narrator_prompt(
         "When you fill a gap, prefer the smallest story-useful addition rather than a twist, and treat it as part of the scene instead of calling attention to the fact that you invented it. "
         "Never mention acts, phases, scene numbers, simulation mechanics, or timeline labels."
     )
+    opening_guidance = (
+        "This is the opening scene. Start smoothly and naturally, like the beginning of a real novel chapter rather than a recap. "
+        "You may spend the first 1-2 sentences quietly establishing the setting, immediate pressure, and the relevant character situation before landing the chosen actions. "
+        "If helpful, briefly frame who a character is in the moment through behavior or role, but do it in flowing prose rather than exposition dumps. "
+        "Favor clarity, atmosphere, and narrative momentum over compression. "
+    ) if opening_scene else ""
     user = (
         "TASK=narrate_step\n"
         f"Story goal: {story_goal}\n"
         f"Recent story paragraphs: {json.dumps(recent_story)}\n"
         f"Proposed actions: {json.dumps(proposals, sort_keys=True)}\n"
         f"World before: {json.dumps(world_before, sort_keys=True)}\n"
-        "Write one paragraph (3-5 sentences) in plain past-tense prose. "
+        f"{opening_guidance}"
+        f"Write one paragraph ({'4-6' if opening_scene else '3-5'} sentences) in plain past-tense prose. "
         "The paragraph should feel like a real scene unfolding beat by beat, with actions influencing one another inside a clear setting. "
         "Use specific physical context from the world state when helpful, so the reader can tell where the characters are and what is changing around them. "
         "It is fine to briefly mention environmental developments, pressure, or visible consequences if they naturally follow from the selected actions and existing world vars. "
