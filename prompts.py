@@ -88,7 +88,7 @@ def build_narrator_prompt(
         "Use the world state to keep the environment vivid and specific when it matters, including believable setting pressure, movement, obstacles, or changes in conditions. "
         "You may add small connective narration or grounded setting detail if it is strongly supported by the selected proposals and world vars, but do not invent major new events. "
         "If the story clearly depends on a missing concrete detail that has never been stated, you may supply that detail yourself as long as it is plausible, specific, and consistent with the selected proposals, recent story, and world vars. "
-        "Use this sparingly to fill narrative gaps such as the contents of a missing document, the exact accusation being made, or another essential fact the scene cannot fully land without. "
+        "Use this sparingly to fill narrative gaps such as the contents of documents, the exact accusation being made, or another essential fact the scene cannot fully land without. "
         "When you fill a gap, prefer the smallest story-useful addition rather than a twist, and treat it as part of the scene instead of calling attention to the fact that you invented it. "
         "Never mention acts, phases, scene numbers, simulation mechanics, or timeline labels."
     )
