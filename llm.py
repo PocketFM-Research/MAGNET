@@ -325,12 +325,132 @@ class AnthropicLLM:
         return f"Invalid Anthropic response: {prefix}{detail_suffix}."
 
 
+@dataclass
+class LocalTransformersLLM:
+    model_name_or_path: str
+    max_new_tokens: int = 1024
+    temperature: float = 0.1
+    load_in_4bit: bool = False
+    output_log_path: str | None = "llm_output.txt"
+
+    def __post_init__(self) -> None:
+        self._model, self._tokenizer = self._load_model()
+
+    def complete_json(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.1,
+    ) -> dict[str, Any]:
+        prompt_text = self._build_prompt_text(
+            [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": user_prompt + "\nReturn a single compact JSON object only.",
+                },
+            ]
+        )
+        inputs = self._tokenizer(prompt_text, return_tensors="pt")
+        model_device = getattr(self._model, "device", None)
+        if model_device is not None:
+            inputs = {key: value.to(model_device) for key, value in inputs.items()}
+
+        generation_kwargs = self._build_generation_kwargs(temperature=temperature)
+        output_ids = self._model.generate(**inputs, **generation_kwargs)
+        prompt_length = int(inputs["input_ids"].shape[-1])
+        generated_ids = output_ids[0][prompt_length:]
+        content = self._tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
+        self._append_output_log(system_prompt, user_prompt, content)
+        return _parse_json_object_with_repair(content, "Local transformers")
+
+    def _load_model(self) -> tuple[Any, Any]:
+        try:
+            import torch
+            from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+        except ImportError as exc:
+            raise LLMError(
+                "Local transformers inference requires `torch` and `transformers`."
+            ) from exc
+
+        tokenizer = AutoTokenizer.from_pretrained(self.model_name_or_path)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+        model_kwargs: dict[str, Any] = {}
+        if torch.cuda.is_available():
+            model_kwargs["device_map"] = "auto"
+        if self.load_in_4bit:
+            model_kwargs["quantization_config"] = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
+            )
+        else:
+            model_kwargs["dtype"] = torch.bfloat16 if torch.cuda.is_available() else torch.float32
+
+        model = AutoModelForCausalLM.from_pretrained(self.model_name_or_path, **model_kwargs)
+        if not torch.cuda.is_available():
+            model = model.to("cpu")
+        model.eval()
+        return model, tokenizer
+
+    def _build_generation_kwargs(self, temperature: float) -> dict[str, Any]:
+        resolved_temperature = self.temperature if self.temperature is not None else temperature
+        generation_kwargs: dict[str, Any] = {
+            "max_new_tokens": self.max_new_tokens,
+            "pad_token_id": self._tokenizer.pad_token_id,
+            "eos_token_id": self._tokenizer.eos_token_id,
+        }
+        if resolved_temperature > 0:
+            generation_kwargs["do_sample"] = True
+            generation_kwargs["temperature"] = resolved_temperature
+            generation_kwargs["top_p"] = 0.9
+        else:
+            generation_kwargs["do_sample"] = False
+        return generation_kwargs
+
+    def _append_output_log(self, system_prompt: str, user_prompt: str, content: str) -> None:
+        if not self.output_log_path:
+            return
+
+        timestamp = datetime.now(timezone.utc).isoformat()
+        block = (
+            f"[{timestamp}] model=local:{self.model_name_or_path}\n"
+            "=== SYSTEM PROMPT ===\n"
+            f"{system_prompt}\n"
+            "=== USER PROMPT ===\n"
+            f"{user_prompt}\n"
+            "=== LLM OUTPUT ===\n"
+            f"{content}\n"
+            "=== END ===\n\n"
+        )
+        try:
+            with open(self.output_log_path, "a", encoding="utf-8") as handle:
+                handle.write(block)
+        except OSError:
+            pass
+
+    def _build_prompt_text(self, messages: list[dict[str, str]]) -> str:
+        try:
+            return self._tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+        except Exception:
+            return ActionAdapterLLM._normalize_messages_for_template(messages)
+
+
 def _normalize_provider_name(raw_provider: str | None) -> str:
     provider = (raw_provider or "").strip().lower()
     if provider in {"", "gemini", "google"}:
         return "gemini"
     if provider in {"anthropic", "claude", "opus"}:
         return "anthropic"
+    if provider in {"local", "transformers", "huggingface", "hf"}:
+        return "local"
     raise LLMError(f"Unsupported LLM provider: {raw_provider}")
 
 
@@ -338,7 +458,7 @@ def _build_hosted_llm(
     provider: str,
     model: str | None = None,
     output_log_path: str | None = None,
-) -> GeminiLLM | AnthropicLLM:
+) -> GeminiLLM | AnthropicLLM | LocalTransformersLLM:
     normalized_provider = _normalize_provider_name(provider)
 
     if normalized_provider == "gemini":
@@ -352,6 +472,22 @@ def _build_hosted_llm(
             api_key=api_key,
             model=resolved_model,
             base_url=base_url,
+            output_log_path=resolved_output_log_path,
+        )
+
+    if normalized_provider == "local":
+        resolved_model = model or os.getenv("LLM_MODEL") or os.getenv("LOCAL_LLM_MODEL")
+        if not resolved_model:
+            raise LLMError("LOCAL_LLM_MODEL or a role-specific local model is required.")
+        max_new_tokens = int(os.getenv("LOCAL_LLM_MAX_NEW_TOKENS", "1024"))
+        temperature = float(os.getenv("LOCAL_LLM_TEMPERATURE", "0.1"))
+        load_in_4bit = os.getenv("LOCAL_LLM_LOAD_IN_4BIT", "0").strip().lower() in {"1", "true", "yes"}
+        resolved_output_log_path = output_log_path or os.getenv("GEMINI_OUTPUT_LOG_PATH", "llm_output.txt")
+        return LocalTransformersLLM(
+            model_name_or_path=resolved_model,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            load_in_4bit=load_in_4bit,
             output_log_path=resolved_output_log_path,
         )
 
@@ -376,7 +512,7 @@ def _build_hosted_llm(
     )
 
 
-def build_default_llm() -> GeminiLLM | AnthropicLLM:
+def build_default_llm() -> GeminiLLM | AnthropicLLM | LocalTransformersLLM:
     provider = os.getenv("LLM_PROVIDER", "gemini")
     return _build_hosted_llm(provider=provider)
 
@@ -517,7 +653,7 @@ class ActionAdapterLLM:
                 "Action adapter inference requires `torch`, `transformers`, and `peft`."
             ) from exc
 
-        adapter_path = Path(self.adapter_path)
+        adapter_path = self._resolve_adapter_path(Path(self.adapter_path))
         if not adapter_path.exists():
             raise LLMError(f"Action adapter path does not exist: {adapter_path}")
 
@@ -595,6 +731,20 @@ class ActionAdapterLLM:
             return None
         base_model = parsed.get("base_model_name_or_path")
         return str(base_model) if isinstance(base_model, str) and base_model.strip() else None
+
+    @staticmethod
+    def _resolve_adapter_path(adapter_path: Path) -> Path:
+        if (adapter_path / "adapter_config.json").exists():
+            return adapter_path
+
+        candidates = [
+            child.parent
+            for child in adapter_path.rglob("adapter_config.json")
+            if not any(part.lower().startswith("checkpoint-") for part in child.parts)
+        ]
+        if len(candidates) == 1:
+            return candidates[0]
+        return adapter_path
 
     def _build_prompt_text(self, messages: list[dict[str, str]]) -> str:
         try:

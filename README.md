@@ -1,6 +1,6 @@
 # pocketfm-world-models
 
-`pocketfm-world-models` is a multi-agent story simulation for generating character-driven narratives with an LLM-backed world model. By default it runs entirely through Gemini, but it can also use Anthropic-hosted models for the full pipeline or a locally trained DPO action adapter for character action generation.
+`pocketfm-world-models` is a multi-agent story simulation for generating character-driven narratives with an LLM-backed world model. By default it runs entirely through Gemini, but it can also use Anthropic-hosted models, local Hugging Face/Transformers models, or a locally trained DPO action adapter for character action generation.
 
 The loop is:
 
@@ -22,7 +22,7 @@ Default runtime values:
 - RAG: disabled unless `--use-rag` or `USE_RAG=1` is set
 - RAG retrieval count: `2`
 
-By default, critic, narrator, next-goal generation, and character actions all use Gemini 2.5 Flash. If `LLM_PROVIDER=anthropic` is set, the hosted pipeline switches to Anthropic instead. If `ACTION_MODEL_PATH` is set, character action generation uses the local DPO adapter loaded by `ActionAdapterLLM` regardless of the hosted provider used for critic, narrator, and follow-up goal generation.
+By default, critic, narrator, next-goal generation, and character actions all use Gemini 2.5 Flash. If `LLM_PROVIDER=anthropic` is set, the hosted pipeline switches to Anthropic instead. If `LLM_PROVIDER=local` is set, critic, narrator, next-goal generation, and hosted-style actions run through a local Hugging Face/Transformers causal LM. If `ACTION_MODEL_PATH` is set, character action generation uses the local DPO adapter loaded by `ActionAdapterLLM` regardless of the provider used for critic, narrator, and follow-up goal generation.
 
 ## Architecture
 
@@ -32,7 +32,7 @@ By default, critic, narrator, next-goal generation, and character actions all us
 - [`environment.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/environment.py): `networkx.DiGraph` world state and protected state updates
 - [`fables.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/fables.py): built-in story definitions and aliases
 - [`prompts.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/prompts.py): action, critic, narrator, and next-goal prompts
-- [`llm.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/llm.py): Gemini client plus local DPO action-adapter inference
+- [`llm.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/llm.py): Gemini, Anthropic, local Transformers, and local DPO action-adapter inference
 - [`memory.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/memory.py): optional structured memory with embedding retrieval
 - [`generate_dpo_dataset.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/generate_dpo_dataset.py): preference dataset generation from story rollouts
 - [`train_dpo.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/train_dpo.py): LoRA DPO adapter training
@@ -73,14 +73,14 @@ Core dependencies include:
 - `datasets`
 - `bitsandbytes`
 
-Some DPO and local-adapter paths need Hugging Face model access and suitable local compute. GPU is strongly preferred for training.
+Some DPO and local model paths need Hugging Face model access and suitable local compute. GPU is strongly preferred for local inference and training.
 
 ## Environment Variables
 
 General runtime:
 
-- `LLM_PROVIDER`: optional hosted provider selector, defaults to `gemini`; supported values include `gemini` and `anthropic`
-- `LLM_MODEL`: optional hosted model override shared by critic, narrator, and next-goal generation
+- `LLM_PROVIDER`: optional provider selector, defaults to `gemini`; supported values include `gemini`, `anthropic`, and `local`
+- `LLM_MODEL`: optional model override shared by critic, narrator, and next-goal generation
 - `GEMINI_API_KEY`: required when `LLM_PROVIDER=gemini` or omitted
 - `GEMINI_MODEL`: optional, defaults to `gemini-2.5-flash`
 - `GEMINI_BASE_URL`: optional, defaults to `https://generativelanguage.googleapis.com/v1beta`
@@ -91,23 +91,27 @@ General runtime:
 - `ANTHROPIC_OUTPUT_LOG_PATH`: optional Anthropic log path override
 - `ANTHROPIC_MAX_OUTPUT_TOKENS`: optional, defaults to `2048`
 - `ANTHROPIC_VERSION`: optional, defaults to `2023-06-01`
+- `LOCAL_LLM_MODEL`: Hugging Face model id or local path used when `LLM_PROVIDER=local`
+- `LOCAL_LLM_MAX_NEW_TOKENS`: optional local generation cap, defaults to `1024`
+- `LOCAL_LLM_TEMPERATURE`: optional local generation temperature, defaults to `0.1`
+- `LOCAL_LLM_LOAD_IN_4BIT`: optional, set to `1`, `true`, or `yes` for 4-bit local loading
 - `FABLE_NAME`: optional fallback story name for `run_pipeline.py`
 - `MAX_STEPS`: optional fallback for `--steps`, defaults to `30`
 - `MAX_PLAN_REVISIONS`: optional fallback for `--max-plan-revisions`, defaults to `1`
 - `USE_RAG`: optional, set to `1`, `true`, or `yes` to enable memory retrieval
 - `RAG_K`: optional fallback for `--rag-k`, defaults to `2`
 - `WORLD_GRAPH_OUTPUT_PATH`: optional, defaults to `final_world_graph.json`
-- `CRITIC_LLM_PROVIDER`: optional hosted provider override for critic calls; falls back to `LLM_PROVIDER`
-- `CRITIC_LLM_MODEL`: optional hosted model override for critic calls; falls back to `LLM_MODEL` and provider defaults
+- `CRITIC_LLM_PROVIDER`: optional provider override for critic calls; falls back to `LLM_PROVIDER`
+- `CRITIC_LLM_MODEL`: optional model override for critic calls; falls back to `LLM_MODEL` and provider defaults
 - `CRITIC_MODEL_OUTPUT_LOG_PATH`: optional critic log path override
-- `NARRATOR_LLM_PROVIDER`: optional hosted provider override for narrator and next-goal calls; falls back to `LLM_PROVIDER`
-- `NARRATOR_LLM_MODEL`: optional hosted model override for narrator and next-goal calls; falls back to `LLM_MODEL` and provider defaults
+- `NARRATOR_LLM_PROVIDER`: optional provider override for narrator and next-goal calls; falls back to `LLM_PROVIDER`
+- `NARRATOR_LLM_MODEL`: optional model override for narrator and next-goal calls; falls back to `LLM_MODEL` and provider defaults
 - `NARRATOR_MODEL_OUTPUT_LOG_PATH`: optional narrator log path override
 
 Local DPO action adapter:
 
 - `ACTION_LLM_PROVIDER`: optional hosted provider override for character actions when not using a local adapter; falls back to `LLM_PROVIDER`
-- `ACTION_LLM_MODEL`: optional hosted model override for character actions when not using a local adapter
+- `ACTION_LLM_MODEL`: optional model override for character actions when not using a local adapter
 - `ACTION_MODEL_PATH`: path to a trained adapter; when set, character actions use the local adapter
 - `ACTION_MODEL_BASE`: optional base model override if it cannot be resolved from `adapter_config.json`
 - `ACTION_MODEL_MAX_NEW_TOKENS`: optional, defaults to `96`
@@ -164,6 +168,45 @@ Run with a local DPO action adapter:
 export GEMINI_API_KEY=your_api_key_here
 export ACTION_MODEL_PATH=artifacts/gemma-action-dpo
 python run_pipeline.py --story radio
+```
+
+Run a fully local base model for critic, narrator, and next-goal generation:
+
+```bash
+export LLM_PROVIDER=local
+export LOCAL_LLM_MODEL=google/gemma-4-31B-it
+export LOCAL_LLM_LOAD_IN_4BIT=1
+export LOCAL_LLM_MAX_NEW_TOKENS=1024
+export LOCAL_LLM_TEMPERATURE=0.1
+python run_pipeline.py --story radio --steps 1
+```
+
+Run local Gemma 4 for critic, narrator, and next-goal generation while keeping a local DPO Gemma action adapter:
+
+```bash
+export LLM_PROVIDER=local
+export LOCAL_LLM_MODEL=google/gemma-4-31B-it
+export LOCAL_LLM_LOAD_IN_4BIT=1
+export LOCAL_LLM_MAX_NEW_TOKENS=1024
+export LOCAL_LLM_TEMPERATURE=0.1
+export ACTION_MODEL_PATH=artifacts/gemma4-action-dpo
+export ACTION_MODEL_BASE=google/gemma-4-31B-it
+export ACTION_MODEL_LOAD_IN_4BIT=1
+export ACTION_MODEL_MAX_NEW_TOKENS=48
+export ACTION_MODEL_TEMPERATURE=0.3
+python run_pipeline.py --story radio --steps 1
+```
+
+On PowerShell, use `$env:NAME="value"` instead of `export NAME=value`:
+
+```powershell
+$env:LLM_PROVIDER="local"
+$env:LOCAL_LLM_MODEL="google/gemma-4-31B-it"
+$env:LOCAL_LLM_LOAD_IN_4BIT="1"
+$env:ACTION_MODEL_PATH="artifacts\gemma4-action-dpo"
+$env:ACTION_MODEL_BASE="google/gemma-4-31B-it"
+$env:ACTION_MODEL_LOAD_IN_4BIT="1"
+.\.venv\Scripts\python.exe run_pipeline.py --story radio --steps 1
 ```
 
 Run Anthropic for critic, narrator, and next-goal generation while keeping the local Gemma adapter for actions:
@@ -330,7 +373,8 @@ Artifacts:
 
 ## Notes And Limitations
 
-- A hosted LLM provider is still required even when using a local action adapter, because critic, narrator, and next-goal calls continue to use the configured hosted model.
+- A hosted LLM provider is not required if `LLM_PROVIDER=local` is configured, but local 31B-class models can require substantial VRAM/RAM even with 4-bit loading.
+- When critic and narrator should share one local model instance, set `LLM_PROVIDER=local` and `LOCAL_LLM_MODEL`, and leave `CRITIC_LLM_MODEL` and `NARRATOR_LLM_MODEL` unset. Role-specific model overrides can load separate model instances.
 - RAG memory is disabled by default and only initialized when requested.
 - The embedding backend may download local model assets on first use.
 - `StepResult.done` is not currently set to `True` by the environment, so runs usually stop by step limit rather than terminal state.
