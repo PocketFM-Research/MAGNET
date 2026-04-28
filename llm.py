@@ -658,7 +658,68 @@ class ActionAdapterLLM:
         recovered = self._recover_action_payload(content)
         if recovered is not None:
             return self._normalize_action_payload(recovered)
-        raise LLMError(f"Action adapter returned non-JSON content: {content[:300]}")
+
+        retry_content = self._generate_action_content(
+            system_prompt=system_prompt,
+            user_prompt=(
+                user_prompt
+                + "\nThe previous answer was invalid because it included prose instead of JSON. "
+                + "Return exactly one JSON object with keys action, confidence, and rationale. "
+                + "Do not include Thought, markdown, explanation, or any text outside the JSON object."
+            ),
+            temperature=0.0,
+            max_new_tokens=min(self.max_new_tokens, 48),
+        )
+        retry_content = self._sanitize_generated_content(retry_content)
+        self._append_output_log(system_prompt, user_prompt, retry_content)
+        try:
+            payload = self._parse_json_object(retry_content)
+            return self._normalize_action_payload(payload)
+        except LLMError:
+            pass
+
+        recovered = self._recover_action_payload(retry_content)
+        if recovered is not None:
+            return self._normalize_action_payload(recovered)
+        return self._normalize_action_payload(
+            {
+                "action": "look around for a concrete next step",
+                "confidence": 0.1,
+                "rationale": "adapter emitted non-json",
+            }
+        )
+
+    def _generate_action_content(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float,
+        max_new_tokens: int,
+    ) -> str:
+        strict_prompt_text = self._build_prompt_text(
+            [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": user_prompt
+                    + "\nReturn a single compact JSON object only. "
+                    + "Keep action under 30 words and rationale under 12 words.",
+                },
+            ]
+        )
+        strict_inputs = self._tokenizer(strict_prompt_text, return_tensors="pt")
+        model_device = getattr(self._model, "device", None)
+        if model_device is not None:
+            strict_inputs = {key: value.to(model_device) for key, value in strict_inputs.items()}
+
+        generation_kwargs = self._build_generation_kwargs(
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
+        )
+        output_ids = self._model.generate(**strict_inputs, **generation_kwargs)
+        prompt_length = int(strict_inputs["input_ids"].shape[-1])
+        generated_ids = output_ids[0][prompt_length:]
+        return self._tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
 
     def _append_output_log(self, system_prompt: str, user_prompt: str, content: str) -> None:
         if not self.output_log_path:
