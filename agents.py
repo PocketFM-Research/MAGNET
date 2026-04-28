@@ -47,7 +47,7 @@ class CharacterAgent:
                 recent_scene_summaries,
                 feedback,
             )
-            action_resp = self.action_llm.complete_json(action_sys, action_user)
+            action_resp = self.action_llm.complete_json(action_sys, action_user, temperature=0.2)
             action = str(action_resp.get("action", "look around")).strip() or "look around"
             confidence_value = action_resp.get("confidence", 0.4)
             confidence = float(confidence_value) if isinstance(confidence_value, (int, float, str)) else 0.4
