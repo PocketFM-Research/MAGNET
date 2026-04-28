@@ -13,21 +13,59 @@ class LLMError(RuntimeError):
 
 
 def _parse_json_object_with_repair(content: str, provider_name: str) -> dict[str, Any]:
-    try:
-        parsed = json.loads(content)
-    except json.JSONDecodeError as exc:
-        repaired = GeminiLLM._repair_json_text(content)
-        if repaired != content:
+    parse_error: json.JSONDecodeError | None = None
+    candidates = [content]
+    extracted = _extract_first_json_object(content)
+    if extracted is not None and extracted != content:
+        candidates.append(extracted)
+
+    for candidate in candidates:
+        for parse_candidate in (candidate, GeminiLLM._repair_json_text(candidate)):
             try:
-                parsed = json.loads(repaired)
-            except json.JSONDecodeError:
-                raise LLMError(f"{provider_name} returned non-JSON content: {content[:300]}") from exc
+                parsed = json.loads(parse_candidate)
+                break
+            except json.JSONDecodeError as exc:
+                parse_error = exc
         else:
-            raise LLMError(f"{provider_name} returned non-JSON content: {content[:300]}") from exc
+            continue
+        break
+    else:
+        raise LLMError(f"{provider_name} returned non-JSON content: {content[:300]}") from parse_error
 
     if not isinstance(parsed, dict):
         raise LLMError(f"{provider_name} returned JSON that was not an object: {type(parsed).__name__}")
     return parsed
+
+
+def _extract_first_json_object(content: str) -> str | None:
+    start = content.find("{")
+    if start == -1:
+        return None
+
+    depth = 0
+    in_string = False
+    escape = False
+    for index in range(start, len(content)):
+        char = content[index]
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return content[start : index + 1]
+
+    return None
 
 @dataclass
 class GeminiLLM:
