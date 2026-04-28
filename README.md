@@ -97,6 +97,12 @@ General runtime:
 - `USE_RAG`: optional, set to `1`, `true`, or `yes` to enable memory retrieval
 - `RAG_K`: optional fallback for `--rag-k`, defaults to `2`
 - `WORLD_GRAPH_OUTPUT_PATH`: optional, defaults to `final_world_graph.json`
+- `CRITIC_LLM_PROVIDER`: optional hosted provider override for critic calls; falls back to `LLM_PROVIDER`
+- `CRITIC_LLM_MODEL`: optional hosted model override for critic calls; falls back to `LLM_MODEL` and provider defaults
+- `CRITIC_MODEL_OUTPUT_LOG_PATH`: optional critic log path override
+- `NARRATOR_LLM_PROVIDER`: optional hosted provider override for narrator and next-goal calls; falls back to `LLM_PROVIDER`
+- `NARRATOR_LLM_MODEL`: optional hosted model override for narrator and next-goal calls; falls back to `LLM_MODEL` and provider defaults
+- `NARRATOR_MODEL_OUTPUT_LOG_PATH`: optional narrator log path override
 
 Local DPO action adapter:
 
@@ -115,6 +121,17 @@ Run the default missing-will story with Gemini-only action generation:
 
 ```bash
 export GEMINI_API_KEY=your_api_key_here
+python run_pipeline.py
+```
+
+Run Gemini 2.5 Flash for actions but point critic and narrator at a different hosted model:
+
+```bash
+export GEMINI_API_KEY=your_api_key_here
+export CRITIC_LLM_PROVIDER=gemini
+export CRITIC_LLM_MODEL=your_gemma_4_model_id
+export NARRATOR_LLM_PROVIDER=gemini
+export NARRATOR_LLM_MODEL=your_gemma_4_model_id
 python run_pipeline.py
 ```
 

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from networkx.readwrite import json_graph
 from environment import WorldProxyEnv
 from fables import get_fable_definition
-from llm import build_action_llm, build_default_llm
+from llm import build_action_llm, build_critic_llm, build_default_llm, build_narrator_llm
 from pipeline import Config, Pipeline
 
 def parse_args() -> argparse.Namespace:
@@ -49,9 +49,17 @@ def main() -> None:
     fable = get_fable_definition(args.fable_name)
     characters = fable.characters
 
-    critic_llm = build_default_llm()
+    default_llm = build_default_llm()
+    critic_llm = build_critic_llm(default_llm=default_llm)
+    narrator_llm = build_narrator_llm(default_llm=default_llm)
     action_llm = build_action_llm(default_llm=critic_llm)
-    pipeline = Pipeline(llm=critic_llm, action_llm=action_llm, use_rag=args.use_rag)
+    pipeline = Pipeline(
+        llm=default_llm,
+        critic_llm=critic_llm,
+        narrator_llm=narrator_llm,
+        action_llm=action_llm,
+        use_rag=args.use_rag,
+    )
     env = WorldProxyEnv(fable=fable)
     result = pipeline.run(
         env=env,

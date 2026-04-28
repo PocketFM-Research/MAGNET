@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from agents import CharacterAgent, NarratorAgent
 from environment import WorldProxyEnv
-from llm import build_action_llm, build_default_llm
+from llm import build_action_llm, build_critic_llm, build_default_llm, build_narrator_llm
 from sim_types import CharacterProfile
 
 
@@ -20,23 +20,28 @@ class Pipeline:
     def __init__(
         self,
         llm: object | None = None,
+        critic_llm: object | None = None,
+        narrator_llm: object | None = None,
         action_llm: object | None = None,
         use_rag: bool = False,
     ) -> None:
-        self.llm = llm or build_default_llm()
-        self.action_llm = action_llm or self.llm
+        default_llm = llm or build_default_llm()
+        self.llm = default_llm
+        self.critic_llm = critic_llm or build_critic_llm(default_llm=default_llm)
+        self.narrator_llm = narrator_llm or build_narrator_llm(default_llm=default_llm)
+        self.action_llm = action_llm or build_action_llm(default_llm=self.critic_llm)
         self.use_rag = use_rag
         self.memory = self._build_memory() if use_rag else None
 
     def run(self, env: WorldProxyEnv, characters: list[CharacterProfile], cfg: Config | None = None) -> dict:
         cfg = cfg or Config()
         if hasattr(env, "set_llm"):
-            env.set_llm(self.llm)
+            env.set_llm(self.narrator_llm)
         agents = [
-            CharacterAgent(profile=profile, action_llm=self.action_llm, critic_llm=self.llm)
+            CharacterAgent(profile=profile, action_llm=self.action_llm, critic_llm=self.critic_llm)
             for profile in characters
         ]
-        narrator = NarratorAgent(llm=self.llm)
+        narrator = NarratorAgent(llm=self.narrator_llm)
 
         env.reset([c.name for c in characters])
         timeline: list[str] = []

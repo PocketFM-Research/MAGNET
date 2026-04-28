@@ -381,6 +381,46 @@ def build_default_llm() -> GeminiLLM | AnthropicLLM:
     return _build_hosted_llm(provider=provider)
 
 
+def build_critic_llm(default_llm: object | None = None) -> object:
+    provider = _normalize_provider_name(os.getenv("CRITIC_LLM_PROVIDER", os.getenv("LLM_PROVIDER", "gemini")))
+    model = os.getenv("CRITIC_LLM_MODEL") or None
+    output_log_path = os.getenv(
+        "CRITIC_MODEL_OUTPUT_LOG_PATH",
+        os.getenv("GEMINI_OUTPUT_LOG_PATH", "llm_output.txt"),
+    )
+    if (
+        default_llm is not None
+        and provider == _normalize_provider_name(os.getenv("LLM_PROVIDER", "gemini"))
+        and not model
+    ):
+        return default_llm
+    return _build_hosted_llm(
+        provider=provider,
+        model=model,
+        output_log_path=output_log_path,
+    )
+
+
+def build_narrator_llm(default_llm: object | None = None) -> object:
+    provider = _normalize_provider_name(os.getenv("NARRATOR_LLM_PROVIDER", os.getenv("LLM_PROVIDER", "gemini")))
+    model = os.getenv("NARRATOR_LLM_MODEL") or None
+    output_log_path = os.getenv(
+        "NARRATOR_MODEL_OUTPUT_LOG_PATH",
+        os.getenv("GEMINI_OUTPUT_LOG_PATH", "llm_output.txt"),
+    )
+    if (
+        default_llm is not None
+        and provider == _normalize_provider_name(os.getenv("LLM_PROVIDER", "gemini"))
+        and not model
+    ):
+        return default_llm
+    return _build_hosted_llm(
+        provider=provider,
+        model=model,
+        output_log_path=output_log_path,
+    )
+
+
 @dataclass
 class ActionAdapterLLM:
     adapter_path: str = "artifacts/gemma-action-dpo"
