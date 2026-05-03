@@ -115,7 +115,7 @@ Local DPO action adapter:
 - `ACTION_MODEL_PATH`: path to a trained adapter; when set, character actions use the local adapter
 - `ACTION_MODEL_BASE`: optional base model override if it cannot be resolved from `adapter_config.json`
 - `ACTION_MODEL_MAX_NEW_TOKENS`: optional, defaults to `96`
-- `ACTION_MODEL_TEMPERATURE`: optional, defaults to `0.3`
+- `ACTION_MODEL_TEMPERATURE`: optional, defaults to `0.2`
 - `ACTION_MODEL_LOAD_IN_4BIT`: optional, set to `1`, `true`, or `yes` for 4-bit loading
 - `ACTION_MODEL_OUTPUT_LOG_PATH`: optional action-model log path override; defaults to `GEMINI_OUTPUT_LOG_PATH` or `llm_output.txt`
 
