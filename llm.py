@@ -1044,7 +1044,7 @@ def build_action_llm(default_llm: object | None = None) -> object:
 
     base_model = os.getenv("ACTION_MODEL_BASE")
     max_new_tokens = int(os.getenv("ACTION_MODEL_MAX_NEW_TOKENS", "96"))
-    temperature = float(os.getenv("ACTION_MODEL_TEMPERATURE", "0.3"))
+    temperature = float(os.getenv("ACTION_MODEL_TEMPERATURE", "0.2"))
     load_in_4bit = os.getenv("ACTION_MODEL_LOAD_IN_4BIT", "0").strip().lower() in {"1", "true", "yes"}
     output_log_path = os.getenv(
         "ACTION_MODEL_OUTPUT_LOG_PATH",
