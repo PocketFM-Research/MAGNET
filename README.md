@@ -91,6 +91,7 @@ General runtime:
 - `ANTHROPIC_OUTPUT_LOG_PATH`: optional Anthropic log path override
 - `ANTHROPIC_MAX_OUTPUT_TOKENS`: optional, defaults to `2048`
 - `ANTHROPIC_VERSION`: optional, defaults to `2023-06-01`
+- `ANTHROPIC_OMIT_TEMPERATURE`: optional, set to `1`, `true`, or `yes` to omit `temperature` from Anthropic requests; this is automatically omitted for Opus 4/4.1 models
 - `LOCAL_LLM_MODEL`: Hugging Face model id or local path used when `LLM_PROVIDER=local`
 - `LOCAL_LLM_MAX_NEW_TOKENS`: optional local generation cap, defaults to `1024`
 - `LOCAL_LLM_TEMPERATURE`: optional local generation temperature, defaults to `0.1`

@@ -263,15 +263,54 @@ class AnthropicLLM:
         temperature: float = 0.1,
     ) -> dict[str, Any]:
         url = f"{self.base_url.rstrip('/')}/messages"
+        omit_temperature = self._should_omit_temperature()
+
+        try:
+            raw = self._post_messages(url, system_prompt, user_prompt, temperature, omit_temperature)
+        except error.HTTPError as exc:
+            raw = exc.read().decode("utf-8", errors="replace")
+            if (
+                not omit_temperature
+                and exc.code == 400
+                and self._is_deprecated_temperature_error(raw)
+            ):
+                try:
+                    raw = self._post_messages(url, system_prompt, user_prompt, temperature, True)
+                except error.HTTPError as retry_exc:
+                    retry_raw = retry_exc.read().decode("utf-8", errors="replace")
+                    raise LLMError(
+                        self._build_http_error_message(retry_exc.code, retry_raw)
+                    ) from retry_exc
+            else:
+                raise LLMError(self._build_http_error_message(exc.code, raw)) from exc
+
+        parsed = json.loads(raw)
+        content = self._extract_text(parsed)
+        if content is None:
+            raise LLMError(self._build_invalid_response_message(parsed, "missing text content"))
+
+        self._append_output_log(system_prompt, user_prompt, content)
+        return _parse_json_object_with_repair(content, "Anthropic")
+
+    def _post_messages(
+        self,
+        url: str,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float,
+        omit_temperature: bool,
+    ) -> str:
         payload = {
             "model": self.model,
             "max_tokens": self.max_output_tokens,
-            "temperature": temperature,
             "system": system_prompt,
             "messages": [
                 {"role": "user", "content": user_prompt},
             ],
         }
+        if not omit_temperature:
+            payload["temperature"] = temperature
+
         body = json.dumps(payload).encode("utf-8")
         req = request.Request(
             url,
@@ -284,20 +323,31 @@ class AnthropicLLM:
             },
         )
 
+        with request.urlopen(req, timeout=self.timeout_seconds) as resp:
+            return resp.read().decode("utf-8")
+
+    def _should_omit_temperature(self) -> bool:
+        if os.getenv("ANTHROPIC_OMIT_TEMPERATURE", "").lower() in {"1", "true", "yes"}:
+            return True
+        if os.getenv("ANTHROPIC_OMIT_TEMPERATURE", "").lower() in {"0", "false", "no"}:
+            return False
+
+        model = self.model.lower()
+        return "opus-4" in model or "opus-4-1" in model
+
+    @staticmethod
+    def _is_deprecated_temperature_error(raw: str) -> bool:
         try:
-            with request.urlopen(req, timeout=self.timeout_seconds) as resp:
-                raw = resp.read().decode("utf-8")
-        except error.HTTPError as exc:
-            raw = exc.read().decode("utf-8", errors="replace")
-            raise LLMError(self._build_http_error_message(exc.code, raw)) from exc
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return False
 
-        parsed = json.loads(raw)
-        content = self._extract_text(parsed)
-        if content is None:
-            raise LLMError(self._build_invalid_response_message(parsed, "missing text content"))
+        error_obj = parsed.get("error")
+        if not isinstance(error_obj, dict):
+            return False
 
-        self._append_output_log(system_prompt, user_prompt, content)
-        return _parse_json_object_with_repair(content, "Anthropic")
+        message = error_obj.get("message")
+        return isinstance(message, str) and "temperature" in message and "deprecated" in message
 
     def _append_output_log(self, system_prompt: str, user_prompt: str, content: str) -> None:
         if not self.output_log_path:
