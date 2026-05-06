@@ -158,6 +158,9 @@ class WorldProxyEnv:
                 continue
             self._set_world_var(key, value)
 
+    def apply_world_updates(self, updates: dict[str, Any]) -> None:
+        self._apply_world_updates(updates)
+
     def get_current_goal(self) -> str:
         goal = self._get_world_var("current_goal", self.fable.goal)
         return str(goal) if goal else self.fable.goal

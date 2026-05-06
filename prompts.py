@@ -129,11 +129,34 @@ def build_new_goal_prompt(
     character_context: list[dict[str, Any]],
     goal_history: list[str],
     goal_status: str = "completed",
+    force_domain_shift: bool = False,
+    previous_goal_domain: str = "",
 ) -> tuple[str, str]:
     system = (
         "You are a story narrator extending or redirecting the story after a goal changes. "
         "Create the next concrete story goal so the narrative continues naturally from the current state."
     )
+    domain_shift_lines = ""
+    transition_lines = ""
+    return_keys = "closure_summary (string), goal_domain (string), goal (string), rationale (string)"
+    if force_domain_shift:
+        transition_lines = (
+            "After choosing the new goal, write a short transition paragraph in plain past-tense prose that shows the previous conflict closing and creates the opening pressure of that specific new goal. "
+            "This paragraph should feel like real story, not summary notes or metadata. "
+        )
+        domain_shift_lines = (
+            f"Previous goal domain: {previous_goal_domain or 'unknown'}\n"
+            "Force domain shift: true\n"
+            "The new goal must belong to a different life domain than the previous goal. "
+            "Do not merely escalate the same investigation, argument, or procedural struggle. "
+            "Prefer major shifts such as legal to domestic, domestic to romantic, romantic to moral, moral to social, social to professional, or professional to family. "
+            "The new goal must create different scene types, different stakes, and a new emotional question. "
+            "Once the new arc begins, the previous domain may remain as background pressure but should not stay the main plot unless a major reversal occurs. "
+        )
+        return_keys = (
+            "closure_summary (string), transition_paragraph (string), "
+            "goal_domain (string), goal (string), rationale (string)"
+        )
     user = (
         "TASK=new_goal\n"
         f"Previous goal: {completed_goal}\n"
@@ -142,14 +165,16 @@ def build_new_goal_prompt(
         f"World variables: {json.dumps(world_vars, sort_keys=True)}\n"
         f"Available characters: {json.dumps(character_context, sort_keys=True)}\n"
         f"Goal history: {json.dumps(goal_history)}\n"
-        "Write a new story goal that follows from the story's current state, raises or redirects the stakes, "
+        "First write a brief closure for the previous goal. "
+        "Then write a new story goal that follows from that closure, raises or redirects the stakes, "
         "does not repeat past goals, and remains feasible to complete through future character actions. "
-        "If the previous goal stalled before completion, choose a goal that expands the story and can be achieved from where the story is now "
-        "instead of forcing the old goal to continue unchanged. "
+        "If the previous goal stalled before completion, choose a goal that expands the story and can be achieved from where the story is now instead of forcing the old goal to continue unchanged. "
         "You may shift attention to an available character who was not central to the last goal, "
         "but the new goal must still grow out of the recent story and current world state. "
         "When introducing a less-used character, make that character's motive or ability relevant to the next conflict. "
         "Avoid repeating the previous goal verbatim or ending the story. "
-        "Return JSON keys: goal (string), rationale (string)."
+        f"{domain_shift_lines}"
+        f"{transition_lines}"
+        f"Return JSON keys: {return_keys}."
     )
     return system, user

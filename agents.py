@@ -219,7 +219,9 @@ class NarratorAgent:
         character_context: list[dict],
         goal_history: list[str],
         goal_status: str = "completed",
-    ) -> str:
+        force_domain_shift: bool = False,
+        previous_goal_domain: str = "",
+    ) -> dict[str, str]:
         goal_sys, goal_user = build_new_goal_prompt(
             completed_goal=completed_goal,
             recent_story=recent_story,
@@ -227,8 +229,15 @@ class NarratorAgent:
             character_context=character_context,
             goal_history=goal_history,
             goal_status=goal_status,
+            force_domain_shift=force_domain_shift,
+            previous_goal_domain=previous_goal_domain,
         )
         goal_resp = self.llm.complete_json(goal_sys, goal_user)
 
-        next_goal = str(goal_resp.get("goal", "")).strip()
-        return next_goal 
+        return {
+            "closure_summary": str(goal_resp.get("closure_summary", "")).strip(),
+            "transition_paragraph": str(goal_resp.get("transition_paragraph", "")).strip(),
+            "goal_domain": str(goal_resp.get("goal_domain", "")).strip(),
+            "goal": str(goal_resp.get("goal", "")).strip(),
+            "rationale": str(goal_resp.get("rationale", "")).strip(),
+        }
