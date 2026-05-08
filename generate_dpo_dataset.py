@@ -390,9 +390,10 @@ def judge_candidates(
         "You are a strict pairwise critic for character actions. "
         "Choose the better next action for the character. "
         "Prefer actions that are concrete, less repetitive, more in-character, "
-        "and more likely to push the story forward through visible consequence or interaction. "
-        "Penalize filler, hesitation with no consequence, generic emotional restatement, "
-        "and actions that merely repeat the recent beat."
+        "and more likely to push the story forward through visible consequence, relationship pressure, changed perception, or meaningful avoidance. "
+        "Do not over-prefer efficient, cooperative, escalatory, or information-revealing actions. "
+        "Penalize filler, generic emotional restatement, and actions that merely repeat the recent beat, "
+        "but allow hesitation, deflection, misinterpretation, or silence when it creates emotional or relational consequence."
     )
     user_prompt = (
         "TASK=pairwise_action_judge\n"
