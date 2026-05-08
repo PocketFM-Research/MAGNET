@@ -157,6 +157,16 @@ class GeminiLLM:
         repaired = re.sub(r"^```(?:json)?\s*", "", repaired)
         repaired = re.sub(r"\s*```$", "", repaired)
         repaired = re.sub(r'([,{]\s*)""([A-Za-z0-9_]+)"\s*:', r'\1"\2":', repaired)
+        scalar_text_keys = (
+            "paragraph|continuity_note|closure_summary|transition_paragraph|"
+            "goal_domain|goal|rationale"
+        )
+        repaired = re.sub(
+            rf'("(?:(?:{scalar_text_keys}))"\s*:\s*"(?:[^"\\]|\\.)*")'
+            r'\s*,?\s*\]\s*(,\s*"[A-Za-z_][A-Za-z0-9_]*"\s*:)',
+            r"\1\2",
+            repaired,
+        )
         repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
         repaired = re.sub(
             r'("world_updates"\s*:\s*\{.*?)(,\s*"(?:confidence|feedback|reason|revise|advances_goal|goal_reached)"\s*:)',

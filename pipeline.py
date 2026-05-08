@@ -214,6 +214,12 @@ class Pipeline:
                     previous_goal=completed_goal,
                     goal_transition=goal_transition,
                 )
+                self._append_goal_transition_story(
+                    story=story,
+                    timeline=timeline,
+                    step=step,
+                    goal_transition=goal_transition,
+                )
                 env.set_new_goal(new_goal)
                 world_after = env.get_world_vars()
                 goal_assigned_step = step + 1
@@ -325,6 +331,12 @@ class Pipeline:
             previous_goal=active_goal,
             goal_transition=goal_transition,
         )
+        self._append_goal_transition_story(
+            story=story,
+            timeline=timeline,
+            step=step,
+            goal_transition=goal_transition,
+        )
         env.set_new_goal(new_goal)
         timeline.append(
             self._format_goal_transition_timeline(
@@ -428,12 +440,16 @@ class Pipeline:
         step: int,
         goal_transition: dict[str, str],
     ) -> None:
+        closure_summary = goal_transition.get("closure_summary", "").strip()
         transition_paragraph = goal_transition.get("transition_paragraph", "").strip()
-        if not transition_paragraph:
+        story_paragraph = " ".join(
+            paragraph for paragraph in (closure_summary, transition_paragraph) if paragraph
+        )
+        if not story_paragraph:
             return
 
-        story.append(transition_paragraph)
-        timeline.append(f"t={step} transition_story={transition_paragraph}")
+        story.append(story_paragraph)
+        timeline.append(f"t={step} transition_story={story_paragraph}")
 
     @staticmethod
     def _format_goal_transition_timeline(

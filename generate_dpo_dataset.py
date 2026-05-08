@@ -257,7 +257,7 @@ def run_episode(
 
         completed_result = next((result for result in results if result.info.get("goal_completed")), None)
         if completed_result is not None and new_goals_used < max_new_goals:
-            new_goal = generate_next_goal(
+            goal_transition = generate_next_goal(
                 llm=llm,
                 narrator=narrator,
                 completed_goal=str(completed_result.info.get("completed_goal", active_goal)),
@@ -265,6 +265,8 @@ def run_episode(
                 world_after=world_after,
                 characters=characters,
             )
+            new_goal = goal_transition.get("goal", "").strip()
+            append_goal_transition_story(story, goal_transition)
             env.set_new_goal(new_goal)
             new_goals_used += 1
             goal_assigned_step = step + 1
@@ -442,7 +444,7 @@ def generate_next_goal(
     story: list[str],
     world_after: dict[str, Any],
     characters: list[CharacterProfile],
-) -> str:
+) -> dict[str, str]:
     goal_sys, goal_user = build_new_goal_prompt(
         completed_goal=completed_goal,
         recent_story=story[-3:],
@@ -454,10 +456,27 @@ def generate_next_goal(
     try:
         goal_resp = llm.complete_json(goal_sys, goal_user)
     except LLMError:
-        return completed_goal
+        return {"goal": completed_goal}
 
     next_goal = str(goal_resp.get("goal", "")).strip()
-    return next_goal or completed_goal
+    return {
+        "closure_summary": str(goal_resp.get("closure_summary", "")).strip(),
+        "transition_paragraph": str(goal_resp.get("transition_paragraph", "")).strip(),
+        "goal": next_goal or completed_goal,
+    }
+
+
+def append_goal_transition_story(story: list[str], goal_transition: dict[str, str]) -> None:
+    story_paragraph = " ".join(
+        paragraph
+        for paragraph in (
+            goal_transition.get("closure_summary", "").strip(),
+            goal_transition.get("transition_paragraph", "").strip(),
+        )
+        if paragraph
+    )
+    if story_paragraph:
+        story.append(story_paragraph)
 
 
 def refresh_stale_goal(
@@ -486,6 +505,13 @@ def refresh_stale_goal(
     if not new_goal or new_goal == active_goal:
         return step - 14
 
+    append_goal_transition_story(
+        story,
+        {
+            "closure_summary": str(goal_resp.get("closure_summary", "")).strip(),
+            "transition_paragraph": str(goal_resp.get("transition_paragraph", "")).strip(),
+        },
+    )
     env.set_new_goal(new_goal)
     return step + 1
 
