@@ -148,7 +148,6 @@ def _editor_prompts(story: str) -> tuple[str, str]:
         "Read the story and annotate editor comments. "
         "Return JSON with key `comments`, where `comments` is an array of objects with keys: "
         "`category` (one allowed category), `comment` (string), `evidence` (short quote or reference). "
-        # "Include up to 1 annotation per paragraph. \n\n"
         "STORY:\n"
         f"{story}"
     )

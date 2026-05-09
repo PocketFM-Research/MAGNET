@@ -40,6 +40,12 @@ def parse_args() -> argparse.Namespace:
         help="Max output tokens for Anthropic response (default 8192).",
     )
     parser.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=int(os.getenv("BASELINE_STORY_TIMEOUT_SECONDS", "240")),
+        help="HTTP timeout in seconds for the model request (default 240).",
+    )
+    parser.add_argument(
         "--output",
         default=None,
         help="Output txt path. Default: outputs/baseline_<fable>_<timestamp>.txt",
@@ -107,6 +113,7 @@ def main() -> None:
         api_key=api_key,
         model=args.model,
         max_output_tokens=args.max_output_tokens,
+        timeout_seconds=args.timeout_seconds,
     )
     try:
         response = llm.complete_json(system_prompt=system_prompt, user_prompt=user_prompt, temperature=0.35)
