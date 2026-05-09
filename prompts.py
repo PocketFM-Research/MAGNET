@@ -16,8 +16,7 @@ def build_action_prompt(
         f"You are the action generator for {name}. "
         f"Character persona: {persona} "
         "Output one concrete next action for the character, but choose it from inside the character's present interpretation of the moment. "
-        "Let fear, loyalty, guilt, resentment, grief, insecurity, desire for control, and remembered prior scenes shape a character's action. "
-        "The action may be restrained, indirect, hesitant, defensive, or emotionally contradictory if that is more truthful than efficient progress. "
+        "Let emotions like fear, loyalty, guilt, resentment, grief, insecurity, desire for control, and remembered prior scenes shape a character's action. "
         "Be concise, realistic, psychologically specific, and consistent with world variables, persona, and the current story goal."
     )
     feedback_line = f"Revision feedback: {revision_feedback}\n" if revision_feedback else ""
@@ -40,7 +39,7 @@ def build_action_prompt(
         f"{feedback_line}"
         "\n"
         "Choose an action that reveals how the character is interpreting the situation while still pushing toward goal completion. "
-        "It is valid for the character to pause, deflect, misread another person, protect a secret, ask the wrong question, soften, harden, or choose a smaller practical move because a direct one costs too much emotionally. "
+        "It is valid for the character to pause, hesitate, deflect, misread another person, protect a secret, ask the wrong question, soften, harden, or choose a smaller practical move because a direct one costs too much emotionally. "
         "Do not add melodrama, speeches about feelings, or therapy-like self-analysis; keep the action observable and grounded.\n"
         "Return JSON keys: action (string), confidence (0..1), rationale (string)."
     )
