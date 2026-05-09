@@ -12,7 +12,7 @@ class Config:
     max_steps: int = 8
     max_plan_revisions: int = 2
     stale_goal_steps: int = 15
-    arc_goal_steps: int = 30
+    arc_goal_steps: int = 40
     use_rag: bool = False
     rag_k: int = 3
 
