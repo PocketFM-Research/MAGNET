@@ -421,14 +421,12 @@ class Pipeline:
             return
 
         previous_goal_domain = str(world_after.get("current_goal_domain", "")).strip()
-        closure_summary = goal_transition.get("closure_summary", "").strip()
         goal_domain = goal_transition.get("goal_domain", "").strip()
         rationale = goal_transition.get("rationale", "").strip()
         updates = {
             "previous_goal": previous_goal,
             "previous_goal_domain": previous_goal_domain,
             "current_goal_domain": goal_domain,
-            "goal_closure_summary": closure_summary,
             "goal_shift_rationale": rationale,
         }
         env.apply_world_updates(updates)
@@ -440,11 +438,7 @@ class Pipeline:
         step: int,
         goal_transition: dict[str, str],
     ) -> None:
-        closure_summary = goal_transition.get("closure_summary", "").strip()
-        transition_paragraph = goal_transition.get("transition_paragraph", "").strip()
-        story_paragraph = " ".join(
-            paragraph for paragraph in (closure_summary, transition_paragraph) if paragraph
-        )
+        story_paragraph = goal_transition.get("transition_paragraph", "").strip()
         if not story_paragraph:
             return
 
@@ -468,7 +462,7 @@ class Pipeline:
         details.extend(
             [
                 f"previous_goal={previous_goal}",
-                f"closure_summary={goal_transition.get('closure_summary', '').strip()}",
+                f"transition_paragraph={goal_transition.get('transition_paragraph', '').strip()}",
                 f"goal_domain={goal_transition.get('goal_domain', '').strip()}",
                 f"next_goal={goal_transition.get('goal', '').strip()}",
             ]

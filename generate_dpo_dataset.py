@@ -461,21 +461,13 @@ def generate_next_goal(
 
     next_goal = str(goal_resp.get("goal", "")).strip()
     return {
-        "closure_summary": str(goal_resp.get("closure_summary", "")).strip(),
         "transition_paragraph": str(goal_resp.get("transition_paragraph", "")).strip(),
         "goal": next_goal or completed_goal,
     }
 
 
 def append_goal_transition_story(story: list[str], goal_transition: dict[str, str]) -> None:
-    story_paragraph = " ".join(
-        paragraph
-        for paragraph in (
-            goal_transition.get("closure_summary", "").strip(),
-            goal_transition.get("transition_paragraph", "").strip(),
-        )
-        if paragraph
-    )
+    story_paragraph = goal_transition.get("transition_paragraph", "").strip()
     if story_paragraph:
         story.append(story_paragraph)
 
@@ -509,7 +501,6 @@ def refresh_stale_goal(
     append_goal_transition_story(
         story,
         {
-            "closure_summary": str(goal_resp.get("closure_summary", "")).strip(),
             "transition_paragraph": str(goal_resp.get("transition_paragraph", "")).strip(),
         },
     )

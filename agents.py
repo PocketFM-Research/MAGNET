@@ -235,7 +235,6 @@ class NarratorAgent:
         goal_resp = self.llm.complete_json(goal_sys, goal_user)
 
         return {
-            "closure_summary": str(goal_resp.get("closure_summary", "")).strip(),
             "transition_paragraph": str(goal_resp.get("transition_paragraph", "")).strip(),
             "goal_domain": str(goal_resp.get("goal_domain", "")).strip(),
             "goal": str(goal_resp.get("goal", "")).strip(),

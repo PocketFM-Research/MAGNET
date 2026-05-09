@@ -158,8 +158,7 @@ class GeminiLLM:
         repaired = re.sub(r"\s*```$", "", repaired)
         repaired = re.sub(r'([,{]\s*)""([A-Za-z0-9_]+)"\s*:', r'\1"\2":', repaired)
         scalar_text_keys = (
-            "paragraph|continuity_note|closure_summary|transition_paragraph|"
-            "goal_domain|goal|rationale"
+            "paragraph|continuity_note|transition_paragraph|goal_domain|goal|rationale"
         )
         repaired = re.sub(
             rf'("(?:(?:{scalar_text_keys}))"\s*:\s*"(?:[^"\\]|\\.)*")'

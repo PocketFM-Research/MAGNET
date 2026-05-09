@@ -150,12 +150,17 @@ def build_new_goal_prompt(
         "Create the next concrete story goal so the narrative continues naturally from the current state."
     )
     domain_shift_lines = ""
-    transition_lines = ""
-    return_keys = "closure_summary (string), goal_domain (string), goal (string), rationale (string)"
+    transition_lines = (
+        "Write a short transition paragraph in plain past-tense prose that closes the previous goal through already-supported consequences and creates the opening pressure of the new goal. "
+        "This paragraph should feel like real story, not summary notes or metadata. "
+        "Do not introduce a major new event; use it to bridge what just happened into what now matters. "
+    )
+    return_keys = "transition_paragraph (string), goal_domain (string), goal (string), rationale (string)"
     if force_domain_shift:
         transition_lines = (
-            "After choosing the new goal, write a short transition paragraph in plain past-tense prose that shows the previous conflict closing and creates the opening pressure of that specific new goal. "
-            "This paragraph should feel like real story, not summary notes or metadata. "
+            "Write a short transition paragraph in plain past-tense prose that closes the previous conflict and creates the opening pressure of that specific new goal in the new domain. "
+            "This paragraph should feel like real story, not summary notes or metadata, and may make the emotional turn into the new domain visible through concrete setting, gesture, memory, or subtext. "
+            "Do not introduce a major new event; use it to bridge what just happened into what now matters. "
         )
         domain_shift_lines = (
             f"Previous goal domain: {previous_goal_domain or 'unknown'}\n"
@@ -166,10 +171,6 @@ def build_new_goal_prompt(
             "The new goal must create different scene types, different stakes, and a new emotional question. "
             "Once the new arc begins, the previous domain may remain as background pressure but should not stay the main plot unless a major reversal occurs. "
         )
-        return_keys = (
-            "closure_summary (string), transition_paragraph (string), "
-            "goal_domain (string), goal (string), rationale (string)"
-        )
     user = (
         "TASK=new_goal\n"
         f"Previous goal: {completed_goal}\n"
@@ -178,8 +179,7 @@ def build_new_goal_prompt(
         f"World variables: {json.dumps(world_vars, sort_keys=True)}\n"
         f"Available characters: {json.dumps(character_context, sort_keys=True)}\n"
         f"Goal history: {json.dumps(goal_history)}\n"
-        "First write a brief closure for the previous goal. "
-        "Then write a new story goal that follows from that closure, raises or redirects the stakes, "
+        "Write a new story goal that follows from the recent story, raises or redirects the stakes, "
         "does not repeat past goals, and remains feasible to complete through future character actions. "
         "If the previous goal stalled before completion, choose a goal that expands the story and can be achieved from where the story is now instead of forcing the old goal to continue unchanged. "
         "You may shift attention to an available character who was not central to the last goal, "
