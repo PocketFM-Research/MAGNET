@@ -11,13 +11,32 @@ from urllib import error, request
 
 
 CATEGORY_ORDER = [
-    "story structure",
-    "character actions and emotions",
-    "sentence writing",
-    "logic and consistency",
-    "style and narrative voice"
+    "story",
+    "chapter",
+    "sentence",
 ]
 
+LEVEL_CATEGORIES: dict[str, list[str]] = {
+    "story": [
+        "logical consistency",
+        "thematic coherence",
+        "character arc completion",
+    ],
+    "chapter": [
+        "goal conflict outcome",
+        "hook and close",
+        "chapter necessity",
+    ],
+    "sentence": [
+        "rhythm",
+        "clarity",
+        "syntax variety",
+    ],
+}
+
+CHAPTER_WORD_TARGET = 1000
+CHAPTER_SAMPLE_COUNT = 5
+SENTENCE_SAMPLE_COUNT = 5
 
 class EvalError(RuntimeError):
     pass
@@ -137,32 +156,108 @@ def extract_story_block(text: str) -> str:
     return story
 
 
-def _editor_prompts(story: str) -> tuple[str, str]:
-    categories = ", ".join(CATEGORY_ORDER)
+def chunk_story_by_words(story: str, target_words: int = CHAPTER_WORD_TARGET) -> list[dict[str, Any]]:
+    paras = [p.strip() for p in re.split(r"\n\s*\n", story) if p.strip()]
+    chunks: list[dict[str, Any]] = []
+    current_paras: list[str] = []
+    current_words = 0
+    start_word = 1
+
+    for para in paras:
+        para_words = len(para.split())
+        if current_paras and current_words + para_words > target_words:
+            text = "\n\n".join(current_paras).strip()
+            end_word = start_word + current_words - 1
+            chunks.append({
+                "index": len(chunks) + 1,
+                "start_word": start_word,
+                "end_word": end_word,
+                "word_count": current_words,
+                "text": text,
+            })
+            start_word = end_word + 1
+            current_paras = [para]
+            current_words = para_words
+        else:
+            current_paras.append(para)
+            current_words += para_words
+
+    if current_paras:
+        text = "\n\n".join(current_paras).strip()
+        end_word = start_word + current_words - 1
+        chunks.append({
+            "index": len(chunks) + 1,
+            "start_word": start_word,
+            "end_word": end_word,
+            "word_count": current_words,
+            "text": text,
+        })
+
+    return chunks
+
+
+def split_sentences(story: str) -> list[str]:
+    story = re.sub(r"\s+", " ", story).strip()
+    if not story:
+        return []
+    parts = re.split(r"(?<=[.!?])\s+", story)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def sample_sentences(sentences: list[str], sample_count: int = SENTENCE_SAMPLE_COUNT) -> list[dict[str, Any]]:
+    if not sentences:
+        return []
+    if len(sentences) <= sample_count:
+        selected = list(range(len(sentences)))
+    else:
+        selected = sorted({round(i * (len(sentences) - 1) / (sample_count - 1)) for i in range(sample_count)})
+
+    out: list[dict[str, Any]] = []
+    for idx in selected:
+        out.append({
+            "index": idx + 1,
+            "text": sentences[idx],
+        })
+    return out
+
+
+def sample_chapters(chapters: list[dict[str, Any]], sample_count: int = CHAPTER_SAMPLE_COUNT) -> list[dict[str, Any]]:
+    if not chapters:
+        return []
+    if len(chapters) <= sample_count:
+        selected = list(range(len(chapters)))
+    else:
+        selected = sorted({round(i * (len(chapters) - 1) / (sample_count - 1)) for i in range(sample_count)})
+    return [chapters[idx] for idx in selected]
+
+
+def _editor_prompts(level: str, content_text: str, context: str = "") -> tuple[str, str]:
+    categories = ", ".join(LEVEL_CATEGORIES[level])
     system = (
         "You are an expert story editor. "
         "Return only JSON. "
-        "Each comment must be a specific, actionable critique tied to this story text. "
+        "Each comment must be a specific, actionable critique tied to the provided text. "
         f"Allowed categories: {categories}."
     )
+    context_block = f"CONTEXT:\n{context}\n\n" if context else ""
     user = (
-        "Read the story and annotate editor comments. "
-        "Include up to 100 comments. "
+        f"Read the {level}-level text and annotate editor comments. "
+        "Include up to 30 comments. "
         "Return JSON with key `comments`, where `comments` is an array of objects with keys: "
         "`category` (one allowed category), `comment` (string), `evidence` (short quote or reference). "
-        "STORY:\n"
-        f"{story}"
+        f"{context_block}"
+        f"TEXT:\n{content_text}"
     )
     return system, user
 
 
-def normalize_comments(payload: dict[str, Any]) -> list[dict[str, str]]:
+def normalize_comments(payload: dict[str, Any], level: str) -> list[dict[str, str]]:
     raw_comments = payload.get("comments")
     if not isinstance(raw_comments, list):
         raise EvalError("Model JSON must include a `comments` array")
 
     normalized: list[dict[str, str]] = []
-    allowed = set(CATEGORY_ORDER)
+    allowed = set(LEVEL_CATEGORIES[level])
     for item in raw_comments:
         if not isinstance(item, dict):
             continue
@@ -179,8 +274,8 @@ def normalize_comments(payload: dict[str, Any]) -> list[dict[str, str]]:
     return normalized
 
 
-def count_by_category(comments: list[dict[str, str]]) -> dict[str, int]:
-    counts = {key: 0 for key in CATEGORY_ORDER}
+def count_by_category(comments: list[dict[str, str]], categories: list[str]) -> dict[str, int]:
+    counts = {key: 0 for key in categories}
     for comment in comments:
         category = comment["category"]
         if category in counts:
@@ -188,26 +283,136 @@ def count_by_category(comments: list[dict[str, str]]) -> dict[str, int]:
     return counts
 
 
-def evaluate_story_file(path: Path, llm: OpenAILLM) -> dict[str, Any]:
-    text = path.read_text(encoding="utf-8")
-    story = extract_story_block(text)
-    system, user = _editor_prompts(story)
+def evaluate_text_block(
+    llm: OpenAILLM,
+    *,
+    level: str,
+    content_text: str,
+    context: str = "",
+    source_meta: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    system, user = _editor_prompts(level=level, content_text=content_text, context=context)
     payload = llm.complete_json(system_prompt=system, user_prompt=user, temperature=0.1)
-    comments = normalize_comments(payload)
-    counts = count_by_category(comments)
+    comments = normalize_comments(payload, level=level)
+    counts = count_by_category(comments, LEVEL_CATEGORIES[level])
     return {
-        "file": str(path),
-        "story": story,
+        "level": level,
+        "source_meta": source_meta or {},
         "comments": comments,
         "counts": counts,
         "total_comments": len(comments),
     }
 
 
+def evaluate_story_file(path: Path, llm: OpenAILLM) -> dict[str, Any]:
+    text = path.read_text(encoding="utf-8")
+    story = extract_story_block(text)
+    story_eval = evaluate_text_block(
+        llm,
+        level="story",
+        content_text=story,
+        source_meta={"unit": "full_story"},
+    )
+
+    chapters = chunk_story_by_words(story, target_words=CHAPTER_WORD_TARGET)
+    sampled_chapters = sample_chapters(chapters, sample_count=CHAPTER_SAMPLE_COUNT)
+    chapter_evals: list[dict[str, Any]] = []
+    for chapter in sampled_chapters:
+        chapter_eval = evaluate_text_block(
+            llm,
+            level="chapter",
+            content_text=chapter["text"],
+            context=f"chapter_index={chapter['index']}, word_span={chapter['start_word']}-{chapter['end_word']}",
+            source_meta={
+                "chapter_index": chapter["index"],
+                "start_word": chapter["start_word"],
+                "end_word": chapter["end_word"],
+                "word_count": chapter["word_count"],
+            },
+        )
+        chapter_evals.append(chapter_eval)
+
+    all_sentences = split_sentences(story)
+    sentence_samples = sample_sentences(all_sentences, sample_count=SENTENCE_SAMPLE_COUNT)
+    sentence_evals: list[dict[str, Any]] = []
+    for sample in sentence_samples:
+        sentence_eval = evaluate_text_block(
+            llm,
+            level="sentence",
+            content_text=sample["text"],
+            context=f"sentence_index={sample['index']}",
+            source_meta={"sentence_index": sample["index"]},
+        )
+        sentence_evals.append(sentence_eval)
+
+    chapter_counts = {cat: 0 for cat in LEVEL_CATEGORIES["chapter"]}
+    for item in chapter_evals:
+        for cat, value in item["counts"].items():
+            chapter_counts[cat] += int(value)
+
+    sentence_counts = {cat: 0 for cat in LEVEL_CATEGORIES["sentence"]}
+    for item in sentence_evals:
+        for cat, value in item["counts"].items():
+            sentence_counts[cat] += int(value)
+
+    counts = {
+        "story": story_eval["counts"],
+        "chapter": chapter_counts,
+        "sentence": sentence_counts,
+    }
+    total_comments = (
+        int(story_eval["total_comments"])
+        + sum(int(item["total_comments"]) for item in chapter_evals)
+        + sum(int(item["total_comments"]) for item in sentence_evals)
+    )
+
+    return {
+        "file": str(path),
+        "story": story,
+        "level_categories": LEVEL_CATEGORIES,
+        "story_eval": story_eval,
+        "chapter_plan": {
+            "target_words": CHAPTER_WORD_TARGET,
+            "sample_count_target": CHAPTER_SAMPLE_COUNT,
+            "num_chapters_total": len(chapters),
+            "num_chapters_sampled": len(sampled_chapters),
+            "sampled_chapter_indices": [c["index"] for c in sampled_chapters],
+            "chapters": [
+                {
+                    "chapter_index": c["index"],
+                    "start_word": c["start_word"],
+                    "end_word": c["end_word"],
+                    "word_count": c["word_count"],
+                }
+                for c in chapters
+            ],
+        },
+        "chapter_evals": chapter_evals,
+        "sentence_plan": {
+            "sample_count_target": SENTENCE_SAMPLE_COUNT,
+            "num_story_sentences": len(all_sentences),
+            "num_sampled_sentences": len(sentence_samples),
+            "sampled_sentence_indices": [s["index"] for s in sentence_samples],
+        },
+        "sentence_evals": sentence_evals,
+        "counts": counts,
+        "total_comments": total_comments,
+    }
+
+
 def build_comparison(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
-    deltas = {
-        cat: int(b["counts"].get(cat, 0)) - int(a["counts"].get(cat, 0))
-        for cat in CATEGORY_ORDER
+    deltas = {}
+    for level, cats in LEVEL_CATEGORIES.items():
+        deltas[level] = {
+            cat: int(b["counts"].get(level, {}).get(cat, 0)) - int(a["counts"].get(level, {}).get(cat, 0))
+            for cat in cats
+        }
+    level_totals = {
+        level: (
+            sum(int(b["counts"].get(level, {}).get(cat, 0)) for cat in cats)
+            - sum(int(a["counts"].get(level, {}).get(cat, 0)) for cat in cats)
+        )
+        for level, cats in LEVEL_CATEGORIES.items()
     }
     return {
         "baseline": a["file"],
@@ -215,6 +420,7 @@ def build_comparison(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
         "baseline_counts": a["counts"],
         "candidate_counts": b["counts"],
         "delta_candidate_minus_baseline": deltas,
+        "delta_candidate_minus_baseline_level_totals": level_totals,
         "baseline_total_comments": a["total_comments"],
         "candidate_total_comments": b["total_comments"],
     }
