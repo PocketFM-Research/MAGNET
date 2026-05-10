@@ -15,6 +15,7 @@ CATEGORY_ORDER = [
     "character actions and emotions",
     "sentence writing",
     "logic and consistency",
+    "style and narrative voice"
 ]
 
 
@@ -146,6 +147,7 @@ def _editor_prompts(story: str) -> tuple[str, str]:
     )
     user = (
         "Read the story and annotate editor comments. "
+        "Include up to 100 comments. "
         "Return JSON with key `comments`, where `comments` is an array of objects with keys: "
         "`category` (one allowed category), `comment` (string), `evidence` (short quote or reference). "
         "STORY:\n"
