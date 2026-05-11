@@ -242,7 +242,7 @@ def _editor_prompts(level: str, content_text: str, context: str = "") -> tuple[s
     context_block = f"CONTEXT:\n{context}\n\n" if context else ""
     user = (
         f"Read the {level}-level text and annotate editor comments. "
-        "Include up to 30 comments. "
+        "Include up to 100 comments. "
         "Return JSON with key `comments`, where `comments` is an array of objects with keys: "
         "`category` (one allowed category), `comment` (string), `evidence` (short quote or reference). "
         f"{context_block}"
