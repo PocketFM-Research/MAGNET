@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from agents import CharacterAgent, NarratorAgent
 from environment import WorldProxyEnv
 from llm import build_action_llm, build_critic_llm, build_default_llm, build_narrator_llm
-from sim_types import CharacterProfile
+from sim_types import CharacterDecision, CharacterProfile
 
 
 @dataclass
@@ -13,6 +13,8 @@ class Config:
     max_plan_revisions: int = 2
     stale_goal_steps: int = 15
     arc_goal_steps: int = 40
+    enable_world_state_updates: bool = True
+    enable_goal_shifts: bool = True
     use_rag: bool = False
     rag_k: int = 3
 
@@ -82,6 +84,8 @@ class Pipeline:
                 proposed_actions.append(decision)
 
             if not proposed_actions:
+                if not cfg.enable_goal_shifts:
+                    continue
                 goal_assigned_step = self._refresh_stale_goal_if_needed(
                     env=env,
                     narrator=narrator,
@@ -118,6 +122,8 @@ class Pipeline:
                     break
 
             if not selected_actions:
+                if not cfg.enable_goal_shifts:
+                    continue
                 goal_assigned_step = self._refresh_stale_goal_if_needed(
                     env=env,
                     narrator=narrator,
@@ -132,13 +138,17 @@ class Pipeline:
                 )
                 continue
 
-            results = env.step_selected_actions(selected_actions)
+            effective_actions = self._apply_ablations_to_actions(
+                selected_actions=selected_actions,
+                enable_world_state_updates=cfg.enable_world_state_updates,
+            )
+            results = env.step_selected_actions(effective_actions)
             world_after = env.get_world_vars()
             step_reward = sum(result.reward for result in results)
             total_reward += step_reward
 
             selected_summary = ", ".join(
-                f"{decision.character}: {decision.action}" for decision in selected_actions
+                f"{decision.character}: {decision.action}" for decision in effective_actions
             )
             timeline.append(f"t={step} narrator_selected={selected_summary}")
             timeline.append(f"t={step} story={narrated_step.paragraph}")
@@ -147,15 +157,15 @@ class Pipeline:
             if cfg.use_rag and self.memory is not None:
                 self.memory.add(
                     timestep=step,
-                    characters=[decision.character for decision in selected_actions],
-                    actions=[decision.action for decision in selected_actions],
+                    characters=[decision.character for decision in effective_actions],
+                    actions=[decision.action for decision in effective_actions],
                     narration=narrated_step.paragraph,
                     reward=step_reward,
                     world_before=world_before,
                     world_after=world_after,
                 )
 
-            for decision, result in zip(selected_actions, results):
+            for decision, result in zip(effective_actions, results):
                 timeline.append(
                     (
                         f"t={step} canonical_actor={decision.character} action={decision.action} "
@@ -164,7 +174,10 @@ class Pipeline:
                 )
 
             completed_result = next((result for result in results if result.info.get("goal_completed")), None)
-            arc_shift_due = self._is_arc_shift_due(step=step, arc_goal_steps=cfg.arc_goal_steps)
+            arc_shift_due = cfg.enable_goal_shifts and self._is_arc_shift_due(
+                step=step,
+                arc_goal_steps=cfg.arc_goal_steps,
+            )
             if arc_shift_due:
                 previous_goal = (
                     str(completed_result.info.get("completed_goal", active_goal))
@@ -231,7 +244,7 @@ class Pipeline:
                         goal_transition=goal_transition,
                     )
                 )
-            elif not arc_shift_due:
+            elif cfg.enable_goal_shifts and not arc_shift_due:
                 goal_assigned_step = self._refresh_stale_goal_if_needed(
                     env=env,
                     narrator=narrator,
@@ -284,6 +297,28 @@ class Pipeline:
                 }
             )
         return context
+
+    @staticmethod
+    def _apply_ablations_to_actions(
+        selected_actions: list[CharacterDecision],
+        enable_world_state_updates: bool,
+    ) -> list[CharacterDecision]:
+        if enable_world_state_updates:
+            return selected_actions
+        return [
+            CharacterDecision(
+                character=decision.character,
+                action=decision.action,
+                confidence=decision.confidence,
+                revisions_used=decision.revisions_used,
+                rationale=decision.rationale,
+                advances_goal=decision.advances_goal,
+                goal_reached=decision.goal_reached,
+                world_updates={},
+                progress_reason=decision.progress_reason,
+            )
+            for decision in selected_actions
+        ]
 
     def _refresh_stale_goal_if_needed(
         self,

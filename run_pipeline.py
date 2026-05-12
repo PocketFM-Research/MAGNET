@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 from datetime import datetime, timezone
+from ablations import get_ablation, list_ablation_names
 from networkx.readwrite import json_graph
 from environment import WorldProxyEnv
 from fables import get_fable_definition
@@ -41,6 +42,12 @@ def parse_args() -> argparse.Namespace:
         default=int(os.getenv("RAG_K", "2")),
         help="Number of memory snippets to retrieve when RAG is enabled.",
     )
+    parser.add_argument(
+        "--ablation",
+        choices=list_ablation_names(),
+        default=os.getenv("ABLATION", "").strip().lower() or None,
+        help="Optional ablation preset to apply.",
+    )
     return parser.parse_args()
 
 
@@ -61,16 +68,20 @@ def main() -> None:
         use_rag=args.use_rag,
     )
     env = WorldProxyEnv(fable=fable)
+    cfg = Config(
+        goal=fable.goal,
+        max_steps=args.steps,
+        max_plan_revisions=args.max_plan_revisions,
+        use_rag=args.use_rag,
+        rag_k=args.rag_k,
+    )
+    if args.ablation:
+        cfg = get_ablation(args.ablation).apply(cfg)
+
     result = pipeline.run(
         env=env,
         characters=characters,
-        cfg=Config(
-            goal=fable.goal,
-            max_steps=args.steps,
-            max_plan_revisions=args.max_plan_revisions,
-            use_rag=args.use_rag,
-            rag_k=args.rag_k,
-        ),
+        cfg=cfg,
     )
 
     graph_path = os.getenv("WORLD_GRAPH_OUTPUT_PATH", "final_world_graph.json")
@@ -92,6 +103,7 @@ def main() -> None:
             "done": result["done"],
             "steps": result["steps"],
             "total_reward": result["total_reward"],
+            "ablation": args.ablation,
             "world_vars": result["world_vars"],
             "world_graph_path": graph_path if graph_exported else None,
         }
