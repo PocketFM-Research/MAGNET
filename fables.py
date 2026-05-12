@@ -564,6 +564,194 @@ def define_probate_fable() -> FableDefinition:
     )
 
 
+def define_museum_restitution_fable() -> FableDefinition:
+    characters = [
+        CharacterProfile(
+            name="Elena",
+            role="museum curator",
+            traits=["polished", "intelligent", "conflicted"],
+            goals=["open the exhibition without scandal", "find out whether the museum knowingly accepted stolen art", "decide what kind of leader she wants to be"],
+            fears=["destroying the institution she spent her life building", "mistaking loyalty for ethics"],
+            abilities=["manage powerful people gracefully", "synthesize complex evidence quickly", "keep public panic contained"],
+            relationships={
+                "Jonah": "provenance researcher whose integrity she depends on",
+                "Tariq": "journalist and former partner who still unsettles her",
+                "Vivian": "board chair whose money and influence shape the museum",
+            },
+            state={"at_museum": True, "under_scrutiny": True, "public_face": True},
+            description=(
+                "A rising museum curator preparing for the biggest exhibition of her career, just as private doubts "
+                "about one centerpiece object begin turning into a moral crisis she cannot delegate away."
+            ),
+        ),
+        CharacterProfile(
+            name="Jonah",
+            role="provenance researcher",
+            traits=["methodical", "earnest", "brave when cornered"],
+            goals=["prove whether the ceremonial mask was looted during the civil war", "force the museum to act before the gala", "stop accepting institutional delay as neutrality"],
+            fears=["being discredited before the truth is secure", "watching evidence disappear into committee language"],
+            abilities=["trace archival gaps", "spot forged paperwork", "stay focused when others get political"],
+            relationships={
+                "Elena": "boss he respects but needs to pressure",
+                "Tariq": "reporter he approached anonymously",
+                "Vivian": "powerful board chair he suspects already knows enough",
+            },
+            state={"has_evidence": True, "ready_to_push": False, "professionally_exposed": False},
+            description=(
+                "A provenance specialist who has spent years in the footnotes of empire and now has one night to "
+                "decide whether careful process is a virtue or a way of helping powerful people stall."
+            ),
+        ),
+        CharacterProfile(
+            name="Tariq",
+            role="investigative journalist",
+            traits=["probing", "composed", "unsentimental"],
+            goals=["publish the truth with proof", "protect his source long enough to verify the story", "find out whether Elena will stand inside the institution or outside it"],
+            fears=["running a story that can be dismissed as personal revenge", "watching Elena choose optics over courage"],
+            abilities=["ask questions people cannot easily dodge", "build public pressure strategically", "read when silence means guilt"],
+            relationships={
+                "Elena": "former partner whose judgment still matters to him",
+                "Jonah": "source he is trying to keep from being burned",
+                "Vivian": "elite patron he has investigated before",
+            },
+            state={"off_the_record": True, "deadline_tonight": True, "emotionally_guarded": True},
+            description=(
+                "A reporter with a reputation for making elegant institutions explain themselves in plain language, "
+                "now facing a story that is professionally explosive and personally unfinished."
+            ),
+        ),
+        CharacterProfile(
+            name="Vivian",
+            role="board chair",
+            traits=["formidable", "strategic", "ruthlessly calm"],
+            goals=["save the gala, donors, and museum reputation", "contain any admission of wrongdoing", "keep Elena aligned with the board"],
+            fears=["losing prestige through public contrition", "creating a precedent donors will interpret as weakness"],
+            abilities=["apply pressure without raising her voice", "frame self-interest as stewardship", "make delay sound responsible"],
+            relationships={
+                "Elena": "protege she expects to act like an executive, not an activist",
+                "Jonah": "staff researcher she considers naive and inconvenient",
+                "Tariq": "reporter she views as opportunistic but dangerous",
+            },
+            state={"hosting_gala": True, "stonewalling": True, "publicly_confident": True},
+            description=(
+                "A board chair who genuinely believes institutions are preserved by controlling the timing of truth, "
+                "even when that means deciding other people can wait longer for justice."
+            ),
+        ),
+    ]
+
+    return FableDefinition(
+        name="museum_restitution_night",
+        goal="Before the exhibition gala begins, Elena must decide whether to pull the museum's centerpiece mask, confront the board, and publicly acknowledge evidence that it was looted, or let the institution protect itself at the cost of the truth.",
+        characters=characters,
+        initial_world_vars={
+            "goal_reached": False,
+            "setting": "A major city museum during the final hours before a high-profile exhibition gala.",
+            "featured_object": "A ceremonial mask on loan from a private collection, celebrated as the crown of the exhibition and now suspected to have been looted during wartime.",
+            "institutional_pressure": "Donors, trustees, and the press are already arriving, and canceling the reveal could cost the museum millions and fracture the board.",
+            "evidence_gap": "The archival chain of custody contains one missing year and a recently surfaced field report that directly contradicts the donor's paperwork.",
+            "public_risk": "If the museum acts first, it may preserve credibility; if the story breaks externally, the institution will look like it hid what it knew.",
+        },
+        progress_reward=0.5,
+        fallback_reward=0.0,
+        completion_key="goal_reached",
+    )
+
+
+def define_hospital_night_shift_fable() -> FableDefinition:
+    characters = [
+        CharacterProfile(
+            name="Camila",
+            role="charge nurse",
+            traits=["competent", "protective", "exhausted"],
+            goals=["keep the emergency department functioning through the night", "protect her team from a preventable error", "stop carrying everyone else's fear alone"],
+            fears=["losing a patient because she missed one small thing", "admitting how close she is to burnout"],
+            abilities=["triage under pressure", "steady panicked people", "see the room as a system"],
+            relationships={
+                "Noah": "resident physician she pushes harder because he is capable of more",
+                "Rina": "paramedic and closest friend on the worst nights",
+                "Victor": "hospital administrator whose promises she no longer trusts",
+            },
+            state={"on_shift": True, "short_staffed": True, "holding_line": True},
+            description=(
+                "A charge nurse who can run an emergency department like a second nervous system, but who has reached "
+                "the hour of the night where competence starts to feel indistinguishable from sacrifice."
+            ),
+        ),
+        CharacterProfile(
+            name="Noah",
+            role="resident physician",
+            traits=["brilliant", "insecure", "conscientious"],
+            goals=["make the right call on a rapidly deteriorating patient", "earn Camila's trust", "admit a charting mistake before it harms someone"],
+            fears=["being exposed as not ready for responsibility", "hesitating long enough for a patient to crash"],
+            abilities=["diagnose unusual presentations", "learn quickly from correction", "stay with difficult cases longer than expected"],
+            relationships={
+                "Camila": "charge nurse whose respect matters more than he admits",
+                "Rina": "paramedic who teases him but believes in him",
+                "Victor": "administrator pushing throughput metrics over caution",
+            },
+            state={"covering_too_many_rooms": True, "made_documentation_error": True, "ready_to_confess": False},
+            description=(
+                "A gifted resident in the dangerous middle stage of training, where knowing a lot is not yet the same "
+                "thing as trusting himself enough to speak up at the right moment."
+            ),
+        ),
+        CharacterProfile(
+            name="Rina",
+            role="paramedic",
+            traits=["fast", "funny", "unflinching"],
+            goals=["get her crashing patient admitted before the system drops him", "force the staff to see a pattern in similar cases", "keep Camila from grinding herself into dust"],
+            fears=["handing off a patient into institutional negligence", "becoming numb enough to stop caring"],
+            abilities=["extract clear facts from chaos", "advocate fiercely during handoff", "notice when separate emergencies share one cause"],
+            relationships={
+                "Camila": "best friend whose limits she sees more clearly than Camila does",
+                "Noah": "young doctor she wants to toughen without hardening",
+                "Victor": "administrator she distrusts on principle and experience",
+            },
+            state={"just_arrived": True, "critical_patient_in_bay": True, "suspicious_pattern": True},
+            description=(
+                "A veteran paramedic who has seen too many avoidable disasters disguised as bad luck and has learned "
+                "that sometimes the bravest part of care is refusing to move on to the next crisis too quickly."
+            ),
+        ),
+        CharacterProfile(
+            name="Victor",
+            role="hospital administrator",
+            traits=["smooth", "defensive", "results-driven"],
+            goals=["keep the department open despite unsafe staffing", "avoid a reportable incident before the board meeting", "push the team to move patients faster"],
+            fears=["a public failure that can be traced to his budget decisions", "staff solidarity turning into whistleblowing"],
+            abilities=["reinterpret risk as efficiency", "control institutional messaging", "make pressure sound like leadership"],
+            relationships={
+                "Camila": "senior nurse he relies on while ignoring her warnings",
+                "Noah": "young physician he assumes will stay compliant",
+                "Rina": "outsider whose bluntness he finds insubordinate",
+            },
+            state={"in_hospital": True, "managing_optics": True, "blocking_diversion": True},
+            description=(
+                "A hospital administrator who believes every crisis can be survived if the paperwork looks orderly, "
+                "even when the people doing the real work are plainly telling him the system is no longer safe."
+            ),
+        ),
+    ]
+
+    return FableDefinition(
+        name="hospital_night_shift",
+        goal="Before dawn, Camila and Noah must decide whether to expose an unsafe pattern of missed toxic exposures and force the emergency department into diversion, even if it triggers institutional fallout, or keep the night moving and risk losing the patient everyone nearly misread.",
+        characters=characters,
+        initial_world_vars={
+            "goal_reached": False,
+            "setting": "An urban emergency department during an overnight shift stretched past safe capacity.",
+            "department_status": "Beds are full, hallway patients are stacking up, and staffing is thin enough that every delay is becoming a clinical decision.",
+            "critical_case": "Rina has brought in a patient with unstable vitals whose symptoms resemble several recent cases that were previously written off as unrelated.",
+            "hidden_system_failure": "A documentation shortcut and pressure to move patients quickly may have obscured a cluster of toxic exposure cases linked to the same apartment building.",
+            "time_pressure": "If the pattern is recognized before dawn, public health can be alerted and more patients can be diverted; if not, the next arrival may be fatal.",
+        },
+        progress_reward=0.5,
+        fallback_reward=0.0,
+        completion_key="goal_reached",
+    )
+
+
 def get_fable_definition(name: str) -> FableDefinition:
     key = name.lower().strip()
     if key in {"corner_store_last_week", "corner_store", "maya_story", "maya store", "maya story"}:
@@ -578,4 +766,8 @@ def get_fable_definition(name: str) -> FableDefinition:
         return define_radio_station_fable()
     if key in {"the_missing_codicil", "probate_story", "estate_story", "missing_will", "codicil"}:
         return define_probate_fable()
+    if key in {"museum_restitution_night", "museum_story", "restitution_story", "museum", "restitution"}:
+        return define_museum_restitution_fable()
+    if key in {"hospital_night_shift", "hospital_story", "night_shift", "er_story", "hospital"}:
+        return define_hospital_night_shift_fable()
     raise ValueError(f"Unknown fable definition '{name}'.")
