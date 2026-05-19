@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,7 +35,6 @@ LEVEL_CATEGORIES: dict[str, list[str]] = {
     ],
 }
 
-CHAPTER_WORD_TARGET = 1000
 CHAPTER_SAMPLE_COUNT = 5
 SENTENCE_SAMPLE_COUNT = 5
 
@@ -148,7 +148,12 @@ def extract_story_block(text: str) -> str:
     pattern = re.compile(r"=== STORY START ===\s*(.*?)\s*=== STORY END ===", flags=re.DOTALL)
     matches = list(pattern.finditer(text))
     if not matches:
-        raise EvalError("Could not find story block between STORY START/END markers")
+        if re.search(r"===\s*SCENE\s+\d+\s*===", text):
+            story = text.strip()
+            if not story:
+                raise EvalError("Scene-formatted story is present but empty")
+            return story
+        raise EvalError("Could not find story block between STORY START/END markers or scene headers")
 
     story = matches[-1].group(1).strip()
     if not story:
@@ -156,44 +161,28 @@ def extract_story_block(text: str) -> str:
     return story
 
 
-def chunk_story_by_words(story: str, target_words: int = CHAPTER_WORD_TARGET) -> list[dict[str, Any]]:
-    paras = [p.strip() for p in re.split(r"\n\s*\n", story) if p.strip()]
-    chunks: list[dict[str, Any]] = []
-    current_paras: list[str] = []
-    current_words = 0
-    start_word = 1
+def split_story_into_scene_chapters(story: str) -> list[dict[str, Any]]:
+    scene_matches = list(
+        re.finditer(r"===\s*SCENE\s+(\d+)\s*===\s*(.*?)(?=(?:\n\s*===\s*SCENE\s+\d+\s*===)|\Z)", story, flags=re.DOTALL)
+    )
+    if not scene_matches:
+        fallback = story.strip()
+        return [{"index": 1, "scene_label": "SCENE 1", "text": fallback}] if fallback else []
 
-    for para in paras:
-        para_words = len(para.split())
-        if current_paras and current_words + para_words > target_words:
-            text = "\n\n".join(current_paras).strip()
-            end_word = start_word + current_words - 1
-            chunks.append({
-                "index": len(chunks) + 1,
-                "start_word": start_word,
-                "end_word": end_word,
-                "word_count": current_words,
-                "text": text,
-            })
-            start_word = end_word + 1
-            current_paras = [para]
-            current_words = para_words
-        else:
-            current_paras.append(para)
-            current_words += para_words
-
-    if current_paras:
-        text = "\n\n".join(current_paras).strip()
-        end_word = start_word + current_words - 1
-        chunks.append({
-            "index": len(chunks) + 1,
-            "start_word": start_word,
-            "end_word": end_word,
-            "word_count": current_words,
-            "text": text,
-        })
-
-    return chunks
+    chapters: list[dict[str, Any]] = []
+    for match in scene_matches:
+        scene_number = int(match.group(1))
+        scene_text = match.group(2).strip()
+        if not scene_text:
+            continue
+        chapters.append(
+            {
+                "index": len(chapters) + 1,
+                "scene_label": f"SCENE {scene_number}",
+                "text": scene_text,
+            }
+        )
+    return chapters
 
 
 def split_sentences(story: str) -> list[str]:
@@ -221,13 +210,18 @@ def sample_sentences(sentences: list[str], sample_count: int = SENTENCE_SAMPLE_C
     return out
 
 
-def sample_chapters(chapters: list[dict[str, Any]], sample_count: int = CHAPTER_SAMPLE_COUNT) -> list[dict[str, Any]]:
+def sample_chapters(
+    chapters: list[dict[str, Any]],
+    sample_count: int = CHAPTER_SAMPLE_COUNT,
+    *,
+    rng: random.Random,
+) -> list[dict[str, Any]]:
     if not chapters:
         return []
-    if len(chapters) <= sample_count:
-        selected = list(range(len(chapters)))
+    if len(chapters) < sample_count:
+        selected = [rng.randrange(len(chapters)) for _ in range(sample_count)]
     else:
-        selected = sorted({round(i * (len(chapters) - 1) / (sample_count - 1)) for i in range(sample_count)})
+        selected = rng.sample(list(range(len(chapters))), k=sample_count)
     return [chapters[idx] for idx in selected]
 
 
@@ -305,6 +299,7 @@ def evaluate_text_block(
 
 
 def evaluate_story_file(path: Path, llm: OpenAILLM) -> dict[str, Any]:
+    rng = random.Random()
     text = path.read_text(encoding="utf-8")
     story = extract_story_block(text)
     story_eval = evaluate_text_block(
@@ -314,20 +309,18 @@ def evaluate_story_file(path: Path, llm: OpenAILLM) -> dict[str, Any]:
         source_meta={"unit": "full_story"},
     )
 
-    chapters = chunk_story_by_words(story, target_words=CHAPTER_WORD_TARGET)
-    sampled_chapters = sample_chapters(chapters, sample_count=CHAPTER_SAMPLE_COUNT)
+    chapters = split_story_into_scene_chapters(story)
+    sampled_chapters = sample_chapters(chapters, sample_count=CHAPTER_SAMPLE_COUNT, rng=rng)
     chapter_evals: list[dict[str, Any]] = []
     for chapter in sampled_chapters:
         chapter_eval = evaluate_text_block(
             llm,
             level="chapter",
             content_text=chapter["text"],
-            context=f"chapter_index={chapter['index']}, word_span={chapter['start_word']}-{chapter['end_word']}",
+            context=f"chapter_index={chapter['index']}, scene_label={chapter['scene_label']}",
             source_meta={
                 "chapter_index": chapter["index"],
-                "start_word": chapter["start_word"],
-                "end_word": chapter["end_word"],
-                "word_count": chapter["word_count"],
+                "scene_label": chapter["scene_label"],
             },
         )
         chapter_evals.append(chapter_eval)
@@ -372,17 +365,16 @@ def evaluate_story_file(path: Path, llm: OpenAILLM) -> dict[str, Any]:
         "level_categories": LEVEL_CATEGORIES,
         "story_eval": story_eval,
         "chapter_plan": {
-            "target_words": CHAPTER_WORD_TARGET,
+            "selection_mode": "random_scene_chapters",
             "sample_count_target": CHAPTER_SAMPLE_COUNT,
             "num_chapters_total": len(chapters),
             "num_chapters_sampled": len(sampled_chapters),
             "sampled_chapter_indices": [c["index"] for c in sampled_chapters],
+            "sampled_scene_labels": [c["scene_label"] for c in sampled_chapters],
             "chapters": [
                 {
                     "chapter_index": c["index"],
-                    "start_word": c["start_word"],
-                    "end_word": c["end_word"],
-                    "word_count": c["word_count"],
+                    "scene_label": c["scene_label"],
                 }
                 for c in chapters
             ],
@@ -430,7 +422,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Evaluate story quality comments from one or two txt files. "
-            "The story is extracted from the last STORY START/END block."
+            "The story is extracted from the last STORY START/END block, "
+            "or from scene-formatted text with SCENE headers."
         )
     )
     parser.add_argument("one", help="Path to first txt file")
