@@ -34,7 +34,7 @@ LEVEL_CATEGORIES: dict[str, list[str]] = {
     ],
 }
 
-CHAPTER_WORD_TARGET = 2000
+CHAPTER_WORD_TARGET = 1000
 CHAPTER_SAMPLE_COUNT = 5
 SENTENCE_SAMPLE_COUNT = 5
 
@@ -157,7 +157,34 @@ def extract_story_block(text: str) -> str:
 
 
 def chunk_story_by_words(story: str, target_words: int = CHAPTER_WORD_TARGET) -> list[dict[str, Any]]:
-    paras = [p.strip() for p in re.split(r"\n\s*\n", story) if p.strip()]
+    raw_paras = [p.strip() for p in re.split(r"\n\s*\n", story) if p.strip()]
+    paras: list[str] = []
+    for para in raw_paras:
+        para_words_list = para.split()
+        if len(para_words_list) <= target_words:
+            paras.append(para)
+            continue
+
+        sentence_parts = [s.strip() for s in re.split(r"(?<=[.!?])\s+", para) if s.strip()]
+        if len(sentence_parts) <= 1:
+            for i in range(0, len(para_words_list), target_words):
+                paras.append(" ".join(para_words_list[i : i + target_words]).strip())
+            continue
+
+        current_sentences: list[str] = []
+        current_words = 0
+        for sentence in sentence_parts:
+            sentence_words = len(sentence.split())
+            if current_sentences and current_words + sentence_words > target_words:
+                paras.append(" ".join(current_sentences).strip())
+                current_sentences = [sentence]
+                current_words = sentence_words
+            else:
+                current_sentences.append(sentence)
+                current_words += sentence_words
+        if current_sentences:
+            paras.append(" ".join(current_sentences).strip())
+
     chunks: list[dict[str, Any]] = []
     current_paras: list[str] = []
     current_words = 0
