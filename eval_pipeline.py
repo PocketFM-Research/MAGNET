@@ -5,6 +5,7 @@ import json
 import os
 import random
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,9 @@ CATEGORY_ORDER = [
     "chapter",
     "sentence",
 ]
+
+SCENE_HEADER_PATTERN = re.compile(r"===\s*SCENE\s+\d+\s*===")
+FALLBACK_SCENE_WORD_TARGET = 2000
 
 LEVEL_CATEGORIES: dict[str, list[str]] = {
     "story": [
@@ -48,6 +52,8 @@ class OpenAILLM:
     model: str = "gpt-5.4-mini"
     base_url: str = "https://api.openai.com/v1"
     timeout_seconds: int = 60
+    max_retries: int = 6
+    retry_base_seconds: float = 5.0
 
     def complete_json(self, system_prompt: str, user_prompt: str, temperature: float = 0.1) -> dict[str, Any]:
         url = f"{self.base_url.rstrip('/')}/chat/completions"
@@ -71,12 +77,21 @@ class OpenAILLM:
             },
         )
 
-        try:
-            with request.urlopen(req, timeout=self.timeout_seconds) as resp:
-                raw = resp.read().decode("utf-8")
-        except error.HTTPError as exc:
-            raw = exc.read().decode("utf-8", errors="replace")
-            raise EvalError(f"OpenAI HTTP {exc.code}: {raw[:500]}") from exc
+        raw = ""
+        for attempt in range(self.max_retries + 1):
+            try:
+                with request.urlopen(req, timeout=self.timeout_seconds) as resp:
+                    raw = resp.read().decode("utf-8")
+                break
+            except error.HTTPError as exc:
+                raw = exc.read().decode("utf-8", errors="replace")
+                if exc.code == 429 and attempt < self.max_retries:
+                    retry_after = _retry_after_seconds(exc.headers.get("Retry-After"))
+                    sleep_seconds = retry_after if retry_after is not None else self.retry_base_seconds * (2 ** attempt)
+                    # Add a small buffer so TPM windows have time to reset.
+                    time.sleep(sleep_seconds + random.uniform(0.25, 1.0))
+                    continue
+                raise EvalError(f"OpenAI HTTP {exc.code}: {raw[:500]}") from exc
 
         try:
             parsed = json.loads(raw)
@@ -144,6 +159,15 @@ def _extract_first_json_object(content: str) -> str | None:
     return None
 
 
+def _retry_after_seconds(header_value: str | None) -> float | None:
+    if not header_value:
+        return None
+    try:
+        return max(0.0, float(header_value))
+    except ValueError:
+        return None
+
+
 def extract_story_block(text: str) -> str:
     pattern = re.compile(r"=== STORY START ===\s*(.*?)\s*=== STORY END ===", flags=re.DOTALL)
     matches = list(pattern.finditer(text))
@@ -162,27 +186,80 @@ def extract_story_block(text: str) -> str:
 
 
 def split_story_into_scene_chapters(story: str) -> list[dict[str, Any]]:
-    scene_matches = list(
-        re.finditer(r"===\s*SCENE\s+(\d+)\s*===\s*(.*?)(?=(?:\n\s*===\s*SCENE\s+\d+\s*===)|\Z)", story, flags=re.DOTALL)
-    )
-    if not scene_matches:
-        fallback = story.strip()
-        return [{"index": 1, "scene_label": "SCENE 1", "text": fallback}] if fallback else []
+    scenes = split_story_text_into_scenes(story)
+    return [
+        {
+            "index": i,
+            "scene_label": f"SCENE {i}",
+            "text": scene,
+        }
+        for i, scene in enumerate(scenes, start=1)
+        if scene.strip()
+    ]
 
-    chapters: list[dict[str, Any]] = []
-    for match in scene_matches:
-        scene_number = int(match.group(1))
-        scene_text = match.group(2).strip()
-        if not scene_text:
+
+def split_story_text_into_scenes(story_text: str) -> list[str]:
+    if SCENE_HEADER_PATTERN.search(story_text):
+        chunks = re.split(r"(?=^===\s*SCENE\s+\d+\s*===\s*$)", story_text, flags=re.MULTILINE)
+        scenes: list[str] = []
+        for chunk in chunks:
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            chunk = re.sub(r"^===\s*SCENE\s+\d+\s*===\s*\n?", "", chunk, count=1, flags=re.MULTILINE).strip()
+            if chunk:
+                scenes.append(chunk)
+        return scenes
+
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", story_text) if p.strip()]
+    if not paragraphs:
+        return []
+
+    normalized_paragraphs: list[str] = []
+    for paragraph in paragraphs:
+        paragraph_words = paragraph.split()
+        if len(paragraph_words) <= FALLBACK_SCENE_WORD_TARGET:
+            normalized_paragraphs.append(paragraph)
             continue
-        chapters.append(
-            {
-                "index": len(chapters) + 1,
-                "scene_label": f"SCENE {scene_number}",
-                "text": scene_text,
-            }
-        )
-    return chapters
+
+        sentence_parts = [s.strip() for s in re.split(r"(?<=[.!?])\s+", paragraph) if s.strip()]
+        if len(sentence_parts) <= 1:
+            for i in range(0, len(paragraph_words), FALLBACK_SCENE_WORD_TARGET):
+                normalized_paragraphs.append(" ".join(paragraph_words[i : i + FALLBACK_SCENE_WORD_TARGET]).strip())
+            continue
+
+        current_sentences: list[str] = []
+        current_words = 0
+        for sentence in sentence_parts:
+            sentence_words = len(sentence.split())
+            if current_sentences and current_words + sentence_words > FALLBACK_SCENE_WORD_TARGET:
+                normalized_paragraphs.append(" ".join(current_sentences).strip())
+                current_sentences = [sentence]
+                current_words = sentence_words
+            else:
+                current_sentences.append(sentence)
+                current_words += sentence_words
+        if current_sentences:
+            normalized_paragraphs.append(" ".join(current_sentences).strip())
+
+    scenes: list[str] = []
+    current_scene_paragraphs: list[str] = []
+    current_scene_words = 0
+
+    for paragraph in normalized_paragraphs:
+        paragraph_words = len(paragraph.split())
+        if current_scene_paragraphs and current_scene_words + paragraph_words > FALLBACK_SCENE_WORD_TARGET:
+            scenes.append("\n\n".join(current_scene_paragraphs).strip())
+            current_scene_paragraphs = [paragraph]
+            current_scene_words = paragraph_words
+        else:
+            current_scene_paragraphs.append(paragraph)
+            current_scene_words += paragraph_words
+
+    if current_scene_paragraphs:
+        scenes.append("\n\n".join(current_scene_paragraphs).strip())
+
+    return [scene for scene in scenes if scene]
 
 
 def split_sentences(story: str) -> list[str]:
@@ -219,7 +296,11 @@ def sample_chapters(
     if not chapters:
         return []
     if len(chapters) < sample_count:
-        selected = [rng.randrange(len(chapters)) for _ in range(sample_count)]
+        # Use every chapter at least once, then fill remaining slots by reusing random chapters.
+        selected = list(range(len(chapters)))
+        selected.extend(rng.randrange(len(chapters)) for _ in range(sample_count - len(chapters)))
+    elif len(chapters) == sample_count:
+        selected = list(range(len(chapters)))
     else:
         selected = rng.sample(list(range(len(chapters))), k=sample_count)
     return [chapters[idx] for idx in selected]
@@ -365,7 +446,13 @@ def evaluate_story_file(path: Path, llm: OpenAILLM) -> dict[str, Any]:
         "level_categories": LEVEL_CATEGORIES,
         "story_eval": story_eval,
         "chapter_plan": {
-            "selection_mode": "random_scene_chapters",
+            "selection_mode": (
+                "all_scene_chapters_plus_random_reuse"
+                if len(chapters) < CHAPTER_SAMPLE_COUNT
+                else "all_scene_chapters"
+                if len(chapters) == CHAPTER_SAMPLE_COUNT
+                else "random_scene_chapters_without_replacement"
+            ),
             "sample_count_target": CHAPTER_SAMPLE_COUNT,
             "num_chapters_total": len(chapters),
             "num_chapters_sampled": len(sampled_chapters),
@@ -443,6 +530,18 @@ def parse_args() -> argparse.Namespace:
         default=os.getenv("EVAL_OUTPUT_PATH", "eval_output.txt"),
         help="Path to write evaluation JSON output (default: EVAL_OUTPUT_PATH or eval_output.txt)",
     )
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=int(os.getenv("EVAL_MAX_RETRIES", "6")),
+        help="Max retries for OpenAI 429 responses (default: EVAL_MAX_RETRIES or 6)",
+    )
+    parser.add_argument(
+        "--retry-base-seconds",
+        type=float,
+        default=float(os.getenv("EVAL_RETRY_BASE_SECONDS", "5")),
+        help="Base backoff in seconds for OpenAI 429 responses (default: EVAL_RETRY_BASE_SECONDS or 5)",
+    )
     return parser.parse_args()
 
 
@@ -452,7 +551,13 @@ def main() -> None:
     if not api_key:
         raise EvalError("OPENAI_API_KEY is required")
 
-    llm = OpenAILLM(api_key=api_key, model=args.model, base_url=args.base_url)
+    llm = OpenAILLM(
+        api_key=api_key,
+        model=args.model,
+        base_url=args.base_url,
+        max_retries=args.max_retries,
+        retry_base_seconds=args.retry_base_seconds,
+    )
 
     first = evaluate_story_file(Path(args.one), llm)
     output: dict[str, Any] = {"one": first}
