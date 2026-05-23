@@ -752,6 +752,186 @@ def define_hospital_night_shift_fable() -> FableDefinition:
     )
 
 
+def define_launch_control_fable() -> FableDefinition:
+    characters = [
+        CharacterProfile(
+            name="Nadia",
+            role="flight director",
+            traits=["decisive", "focused", "protective"],
+            goals=["keep the crew safe", "decide whether to scrub the launch", "prevent reputation from overriding procedure"],
+            fears=["missing a hazard because the room wants liftoff", "being remembered for a preventable disaster"],
+            abilities=["coordinate specialists under pressure", "translate risk into action", "stay calm when others escalate"],
+            relationships={
+                "Evan": "propulsion engineer whose instincts she trusts but needs to challenge",
+                "Priya": "mission commander aboard the capsule",
+                "Julian": "program director pushing for the launch to proceed",
+            },
+            state={"in_flight_control": True, "countdown_active": True, "responsible_for_launch": True},
+            description=(
+                "A flight director whose job is to say the hard sentence everyone hopes not to hear: we stop now, because the alternative is worse."
+            ),
+        ),
+        CharacterProfile(
+            name="Evan",
+            role="propulsion engineer",
+            traits=["brilliant", "nervy", "precise"],
+            goals=["determine whether the engine anomaly is real or sensor noise", "prove he did not miss a critical warning", "help Nadia make the right call"],
+            fears=["being the person who overlooked the flaw", "causing the launch to fail after years of work"],
+            abilities=["read telemetry fast", "spot tiny inconsistencies", "explain technical risk clearly"],
+            relationships={
+                "Nadia": "flight director he wants to impress and protect",
+                "Priya": "crew commander whose life depends on his judgment",
+                "Julian": "executive who wants certainty Evan cannot honestly give",
+            },
+            state={"on_console": True, "worried": True, "caught_between_safety_and_schedule": True},
+            description=(
+                "A propulsion specialist who knows the engine data better than anyone in the room, and knows enough to be afraid of what he cannot yet prove."
+            ),
+        ),
+        CharacterProfile(
+            name="Priya",
+            role="mission commander",
+            traits=["steady", "experienced", "unsentimental"],
+            goals=["return the crew safely", "trust the ground team without surrendering agency", "avoid being used as a symbol for someone else's decision"],
+            fears=["discovering too late that the launch was unsafe", "being told to stay inspirational while others gamble with her life"],
+            abilities=["keep a crew focused", "communicate under pressure", "make disciplined choices in crisis"],
+            relationships={
+                "Nadia": "ground commander she relies on",
+                "Evan": "engine specialist whose voice she listens for",
+                "Jalen": "pilot and crew partner who watches her back",
+            },
+            state={"aboard_capsule": True, "suited_up": True, "ready_if_called": True},
+            description=(
+                "A mission commander who has trained for years to trust the process, but not to obey it blindly when the room starts cutting corners."
+            ),
+        ),
+        CharacterProfile(
+            name="Julian",
+            role="program director",
+            traits=["charismatic", "political", "hard to read"],
+            goals=["keep the launch on schedule", "protect the program from public embarrassment", "avoid a scrub that could cost funding"],
+            fears=["a visible failure in front of investors and press", "losing control of the narrative"],
+            abilities=["pressure teams without sounding harsh", "frame risk as opportunity", "make delay feel expensive"],
+            relationships={
+                "Nadia": "flight director he needs to persuade",
+                "Evan": "engineer he thinks is overcautious",
+                "Priya": "astronaut who can ruin his day if she refuses to go",
+            },
+            state={"at_press_window": True, "impatient": True, "public_facing": True},
+            description=(
+                "The program's public face, skilled at selling momentum and just plausible enough that everyone else has to work to prove him wrong."
+            ),
+        ),
+    ]
+
+    return FableDefinition(
+        name="launch_control_abort",
+        goal="Before the countdown reaches zero, Nadia must decide whether to scrub the launch after a possible engine anomaly, even if it humiliates the program, or trust incomplete data and risk launching a crew into danger.",
+        characters=characters,
+        initial_world_vars={
+            "goal_reached": False,
+            "setting": "A coastal rocket launch complex during the final ten minutes before liftoff.",
+            "countdown_status": "The vehicle is fueled, the crew is strapped in, and the launch room is watching a telemetry spike that may be harmless or catastrophic.",
+            "engine_anomaly": "One sensor on the first stage has reported an intermittent pressure drop that could be a bad reading or the first sign of a hardware fault.",
+            "public_pressure": "The launch has been delayed twice already, journalists are at the fence line, and the program cannot easily absorb another scrub.",
+            "safety_conflict": "The flight team knows that the mission can be delayed, but the crew cannot get the benefit of a perfect answer in the time remaining.",
+        },
+        progress_reward=0.5,
+        fallback_reward=0.0,
+        completion_key="goal_reached",
+    )
+
+
+def define_arctic_research_fable() -> FableDefinition:
+    characters = [
+        CharacterProfile(
+            name="Sera",
+            role="station lead",
+            traits=["practical", "resilient", "protective"],
+            goals=["get the team through the storm", "decide whether to evacuate or shelter in place", "stop treating every crisis as a test of toughness"],
+            fears=["losing someone to a decision she made", "realizing the station cannot survive another winter"],
+            abilities=["coordinate scarce resources", "read weather and morale", "make clear calls under isolation"],
+            relationships={
+                "Tom": "mechanic she depends on for the station to keep running",
+                "Leena": "glaciologist who discovered the anomaly",
+                "Arun": "communications officer who is trying to keep the outside world informed",
+            },
+            state={"at_station": True, "storm_warning": True, "in_charge": True},
+            description=(
+                "The winter-over lead at a remote Arctic research station, responsible for both the science and the survival of the people who stayed."
+            ),
+        ),
+        CharacterProfile(
+            name="Tom",
+            role="mechanic",
+            traits=["inventive", "stubborn", "dryly funny"],
+            goals=["keep the power system alive", "repair the heating loop before the temperature drops further", "prove the station can ride out the storm"],
+            fears=["failing when everyone needs him", "discovering the backup systems are worse than he thought"],
+            abilities=["fix damaged systems under impossible conditions", "improvise with limited parts", "keep panic from spreading"],
+            relationships={
+                "Sera": "station lead he argues with because he cares",
+                "Leena": "scientist whose warning pushed everyone into this decision",
+                "Arun": "friend who keeps him grounded with bad jokes",
+            },
+            state={"in_engine_room": True, "sleep_deprived": True, "repair_in_progress": True},
+            description=(
+                "A mechanic who can keep a station alive with spare wire and spite, until the cold gets personal enough to challenge him."
+            ),
+        ),
+        CharacterProfile(
+            name="Leena",
+            role="glaciologist",
+            traits=["observant", "idealistic", "tremblingly brave"],
+            goals=["share the discovery before the data is lost", "convince Sera the anomaly matters", "avoid being the scientist who cries wolf"],
+            fears=["being dismissed as overdramatic", "watching the ice shelf collapse before the evidence is secured"],
+            abilities=["recognize dangerous patterns in data", "analyze environmental change quickly", "keep going when afraid"],
+            relationships={
+                "Sera": "lead who needs convincing",
+                "Tom": "mechanic who thinks in practical consequences",
+                "Arun": "the person she trusts to get the message out if needed",
+            },
+            state={"has_new_data": True, "concerned": True, "unable_to_leave": False},
+            description=(
+                "A glaciologist who has spent months studying the ice and has now found a signal that suggests the shelf beneath the station may be failing faster than predicted."
+            ),
+        ),
+        CharacterProfile(
+            name="Arun",
+            role="communications officer",
+            traits=["calm", "attentive", "quietly stubborn"],
+            goals=["restore a usable link to the outside world", "get the emergency data sent before the storm cuts them off", "keep the team from turning on itself"],
+            fears=["losing contact entirely", "being forced to choose between transparency and morale"],
+            abilities=["troubleshoot communications gear", "listen for what people are not saying", "turn fragmentary updates into clear reports"],
+            relationships={
+                "Sera": "leader he respects",
+                "Tom": "mechanic friend who keeps the place running",
+                "Leena": "scientist whose data he believes before anyone else does",
+            },
+            state={"radio_live": False, "link_failing": True, "tracking_weather": True},
+            description=(
+                "The station's communications officer, juggling storm warnings, broken equipment, and the knowledge that the first missed message may be the one that matters most."
+            ),
+        ),
+    ]
+
+    return FableDefinition(
+        name="arctic_research_storm",
+        goal="Before the storm seals the station off completely, Sera must decide whether to evacuate on Leena's warning, even if it means abandoning a year's worth of research, or stay and risk being trapped with a failing power system and a potentially unstable ice shelf.",
+        characters=characters,
+        initial_world_vars={
+            "goal_reached": False,
+            "setting": "A remote Arctic research station during the first major storm of winter.",
+            "weather_status": "Visibility is dropping, wind is strengthening, and the temperature is falling fast enough to freeze exposed equipment.",
+            "scientific_alarm": "Leena's latest readings suggest the ice shelf beneath one of the outer structures is fracturing earlier than expected.",
+            "infrastructure_risk": "The generator room is unstable, the heating loop is struggling, and the communications link may fail before dawn.",
+            "evacuation_pressure": "A supply plane is not due for several days, so the team may need to decide now whether to leave under rough conditions or ride out the storm and hope the station holds.",
+        },
+        progress_reward=0.5,
+        fallback_reward=0.0,
+        completion_key="goal_reached",
+    )
+
+
 def get_fable_definition(name: str) -> FableDefinition:
     key = name.lower().strip()
     if key in {"corner_store_last_week", "corner_store", "maya_story", "maya store", "maya story"}:
@@ -770,4 +950,8 @@ def get_fable_definition(name: str) -> FableDefinition:
         return define_museum_restitution_fable()
     if key in {"hospital_night_shift", "hospital_story", "night_shift", "er_story", "hospital"}:
         return define_hospital_night_shift_fable()
+    if key in {"launch_control_abort", "launch_story", "rocket_launch", "mission_control", "launch"}:
+        return define_launch_control_fable()
+    if key in {"arctic_research_storm", "arctic_story", "research_station", "polar_station", "arctic"}:
+        return define_arctic_research_fable()
     raise ValueError(f"Unknown fable definition '{name}'.")

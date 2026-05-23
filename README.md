@@ -48,6 +48,8 @@ Supported names and aliases are registered in `get_fable_definition()`.
 - `flood_rescue`: floodwater rescue story, internally `flood_rescue_night`
 - `radio`: final radio broadcast story, internally `radio_station_last_show`
 - `missing_will` or `codicil`: probate and missing-will story, internally `the_missing_codicil`
+- `launch`: rocket launch countdown story, internally `launch_control_abort`
+- `arctic`: isolated Arctic station storm story, internally `arctic_research_storm`
 
 Example:
 
