@@ -160,7 +160,34 @@ def extract_story_block(text: str) -> str:
 
 
 def chunk_story_by_words(story: str, target_words: int = CHAPTER_WORD_TARGET) -> list[dict[str, Any]]:
-    paras = [p.strip() for p in re.split(r"\n\s*\n", story) if p.strip()]
+    raw_paras = [p.strip() for p in re.split(r"\n\s*\n", story) if p.strip()]
+    paras: list[str] = []
+    for para in raw_paras:
+        para_words_list = para.split()
+        if len(para_words_list) <= target_words:
+            paras.append(para)
+            continue
+
+        sentence_parts = [s.strip() for s in re.split(r"(?<=[.!?])\s+", para) if s.strip()]
+        if len(sentence_parts) <= 1:
+            for i in range(0, len(para_words_list), target_words):
+                paras.append(" ".join(para_words_list[i : i + target_words]).strip())
+            continue
+
+        current_sentences: list[str] = []
+        current_words = 0
+        for sentence in sentence_parts:
+            sentence_words = len(sentence.split())
+            if current_sentences and current_words + sentence_words > target_words:
+                paras.append(" ".join(current_sentences).strip())
+                current_sentences = [sentence]
+                current_words = sentence_words
+            else:
+                current_sentences.append(sentence)
+                current_words += sentence_words
+        if current_sentences:
+            paras.append(" ".join(current_sentences).strip())
+
     chunks: list[dict[str, Any]] = []
     current_paras: list[str] = []
     current_words = 0
@@ -190,15 +217,13 @@ def chunk_story_by_words(story: str, target_words: int = CHAPTER_WORD_TARGET) ->
     if current_paras:
         text = "\n\n".join(current_paras).strip()
         end_word = start_word + current_words - 1
-        chunks.append(
-            {
-                "index": len(chunks) + 1,
-                "start_word": start_word,
-                "end_word": end_word,
-                "word_count": current_words,
-                "text": text,
-            }
-        )
+        chunks.append({
+            "index": len(chunks) + 1,
+            "start_word": start_word,
+            "end_word": end_word,
+            "word_count": current_words,
+            "text": text,
+        })
 
     return chunks
 
@@ -240,31 +265,39 @@ def sample_chapters(chapters: list[dict[str, Any]], sample_count: int = CHAPTER_
     return [chapters[idx] for idx in selected]
 
 
-def _pairwise_rubric_prompts(level: str, a_text: str, b_text: str, context: str = "") -> tuple[str, str]:
+def _rubric_prompts(level: str, presented_texts: dict[str, str], context: str = "") -> tuple[str, str]:
     categories = LEVEL_CATEGORIES[level]
     categories_str = ", ".join(categories)
+    labels = list(presented_texts.keys())
+    if labels != ["A", "B"] and labels != ["A", "B", "C"]:
+        raise EvalError("Presented labels must be ['A', 'B'] or ['A', 'B', 'C']")
+
+    versions_word = "TWO" if len(labels) == 2 else "THREE"
+    labels_str = " and ".join(labels) if len(labels) == 2 else ", ".join(labels[:-1]) + f", and {labels[-1]}"
+    winner_options = ", ".join([f"\"{label}\"" for label in labels] + ["\"tie\""])
+    side_keys = "\n".join([f"- `{label}`: object with keys `scores` and `overall_score`" for label in labels])
+
     system = (
         "You are a rigorous fiction editor and evaluator. "
-        "You will compare TWO versions of text labeled A and B. "
+        f"You will compare {versions_word} versions of text labeled {labels_str}. "
         "Score each category on a 0-100 rubric (integers only), where 0 is very poor and 100 is excellent. "
-        "Return only JSON. Do not mention which is 'baseline' or 'candidate'—only refer to A and B."
+        f"Return only JSON. Refer only to the labels {labels_str}."
     )
     context_block = f"CONTEXT:\n{context}\n\n" if context else ""
+    text_blocks = "\n\n".join([f"{label}_TEXT:\n{presented_texts[label]}" for label in labels])
     user = (
-        f"Pairwise rubric evaluation for {level}-level text.\n\n"
+        f"Rubric evaluation for {level}-level text.\n\n"
         f"Categories (must score all of them): {categories_str}\n\n"
         "Return JSON with keys:\n"
-        "- `A`: object with keys `scores` and `overall_score`\n"
-        "- `B`: object with keys `scores` and `overall_score`\n"
-        "- `winner`: one of \"A\", \"B\", or \"tie\"\n"
+        f"{side_keys}\n"
+        f"- `winner`: one of {winner_options}\n"
         "- `winner_rationale`: string explaining why the winner is better\n\n"
         "Where each side's `scores` is an object mapping each category to an object with keys:\n"
         "- `score` (int 0-100)\n"
         "- `rationale` (string)\n"
         "- `evidence` (short quote)\n\n"
         f"{context_block}"
-        f"A_TEXT:\n{a_text}\n\n"
-        f"B_TEXT:\n{b_text}"
+        f"{text_blocks}"
     )
     return system, user
 
@@ -321,76 +354,60 @@ def _normalize_side(side_payload: Any, level: str) -> dict[str, Any]:
     return {"scores": out_scores, "overall_score": overall_score}
 
 
-def normalize_pairwise_rubric(payload: dict[str, Any], level: str) -> dict[str, Any]:
+def normalize_rubric(payload: dict[str, Any], level: str, labels: list[str]) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise EvalError("Model output must be a JSON object")
 
-    a_norm = _normalize_side(payload.get("A"), level=level)
-    b_norm = _normalize_side(payload.get("B"), level=level)
+    normalized_sides = {label: _normalize_side(payload.get(label), level=level) for label in labels}
 
     winner = str(payload.get("winner", "")).strip().lower()
-    if winner not in {"a", "b", "tie"}:
+    valid_winners = {label.lower() for label in labels} | {"tie"}
+    if winner not in valid_winners:
         winner = "tie"
     winner_rationale = str(payload.get("winner_rationale", "")).strip()
 
-    return {
-        "A": a_norm,
-        "B": b_norm,
-        "winner": winner,
-        "winner_rationale": winner_rationale,
-    }
+    return {**normalized_sides, "winner": winner, "winner_rationale": winner_rationale}
 
 
-def evaluate_pair_text_block(
+def evaluate_text_group(
     llm: OpenAILLM,
     *,
     level: str,
-    baseline_text: str,
-    candidate_text: str,
+    texts_by_story: dict[str, str],
     context: str = "",
     source_meta: dict[str, Any] | None = None,
     rng: random.Random,
 ) -> dict[str, Any]:
-    if rng.random() < 0.5:
-        a_label = "baseline"
-        b_label = "candidate"
-        a_text = baseline_text
-        b_text = candidate_text
-    else:
-        a_label = "candidate"
-        b_label = "baseline"
-        a_text = candidate_text
-        b_text = baseline_text
+    story_keys = list(texts_by_story.keys())
+    display_labels = ["A", "B", "C"][: len(story_keys)]
+    shuffled_story_keys = list(story_keys)
+    rng.shuffle(shuffled_story_keys)
+    presentation_order = dict(zip(display_labels, shuffled_story_keys))
+    presented_texts = {label: texts_by_story[story_key] for label, story_key in presentation_order.items()}
 
-    system, user = _pairwise_rubric_prompts(level=level, a_text=a_text, b_text=b_text, context=context)
+    system, user = _rubric_prompts(level=level, presented_texts=presented_texts, context=context)
     payload = llm.complete_json(system_prompt=system, user_prompt=user, temperature=0.1)
-    normalized = normalize_pairwise_rubric(payload, level=level)
+    normalized = normalize_rubric(payload, level=level, labels=display_labels)
 
-    a_side = normalized["A"]
-    b_side = normalized["B"]
-    baseline_out = a_side if a_label == "baseline" else b_side
-    candidate_out = b_side if b_label == "candidate" else a_side
+    results_by_story = {
+        story_key: normalized[label]
+        for label, story_key in presentation_order.items()
+    }
 
-    winner = normalized["winner"]
-    if winner == "a":
-        winner_abs = a_label
-    elif winner == "b":
-        winner_abs = b_label
-    else:
-        winner_abs = "tie"
+    winner_label = normalized["winner"]
+    winner_story = presentation_order[winner_label.upper()] if winner_label != "tie" else "tie"
 
     return {
         "level": level,
         "source_meta": source_meta or {},
-        "presentation_order": {"A": a_label, "B": b_label},
-        "baseline": baseline_out,
-        "candidate": candidate_out,
-        "winner": winner_abs,
+        "presentation_order": presentation_order,
+        "results": results_by_story,
+        "winner": winner_story,
         "winner_rationale": normalized.get("winner_rationale", ""),
     }
 
 
-def _aggregate_level(level: str, evals: list[dict[str, Any]], side: str) -> dict[str, Any]:
+def _aggregate_level(level: str, evals: list[dict[str, Any]], story_key: str) -> dict[str, Any]:
     categories = LEVEL_CATEGORIES[level]
     if not evals:
         return {
@@ -400,8 +417,8 @@ def _aggregate_level(level: str, evals: list[dict[str, Any]], side: str) -> dict
 
     category_means: dict[str, float] = {}
     for cat in categories:
-        category_means[cat] = mean([int(item[side]["scores"][cat]["score"]) for item in evals])
-    overall_mean = mean([int(item[side]["overall_score"]) for item in evals])
+        category_means[cat] = mean([int(item["results"][story_key]["scores"][cat]["score"]) for item in evals])
+    overall_mean = mean([int(item["results"][story_key]["overall_score"]) for item in evals])
     return {"category_means": category_means, "overall_mean": overall_mean}
 
 
@@ -409,168 +426,205 @@ def _read_story(path: Path) -> str:
     return extract_story_block(path.read_text(encoding="utf-8"))
 
 
-def evaluate_story_pair(
-    baseline_path: Path,
-    candidate_path: Path,
+def evaluate_story_set(
+    story_paths: list[Path],
     llm: OpenAILLM,
     *,
     seed: int | None,
 ) -> dict[str, Any]:
+    if len(story_paths) not in {2, 3}:
+        raise EvalError("Expected 2 or 3 story paths")
+
     rng = random.Random(seed)
+    story_keys = [f"story_{idx + 1}" for idx in range(len(story_paths))]
+    stories = {story_key: _read_story(path) for story_key, path in zip(story_keys, story_paths)}
 
-    baseline_story = _read_story(baseline_path)
-    candidate_story = _read_story(candidate_path)
-
-    story_eval = evaluate_pair_text_block(
+    story_eval = evaluate_text_group(
         llm,
         level="story",
-        baseline_text=baseline_story,
-        candidate_text=candidate_story,
+        texts_by_story=stories,
         source_meta={"unit": "full_story"},
         rng=rng,
     )
 
-    baseline_chapters = chunk_story_by_words(baseline_story, target_words=CHAPTER_WORD_TARGET)
-    candidate_chapters = chunk_story_by_words(candidate_story, target_words=CHAPTER_WORD_TARGET)
-    baseline_sampled = sample_chapters(baseline_chapters, sample_count=CHAPTER_SAMPLE_COUNT)
-    candidate_sampled = sample_chapters(candidate_chapters, sample_count=CHAPTER_SAMPLE_COUNT)
+    chapters_by_story = {
+        story_key: chunk_story_by_words(story_text, target_words=CHAPTER_WORD_TARGET)
+        for story_key, story_text in stories.items()
+    }
+    sampled_chapters_by_story = {
+        story_key: sample_chapters(chapters, sample_count=CHAPTER_SAMPLE_COUNT)
+        for story_key, chapters in chapters_by_story.items()
+    }
 
-    num_chapter_pairs = min(len(baseline_sampled), len(candidate_sampled))
-    chapter_pairs: list[dict[str, Any]] = []
-    for i in range(num_chapter_pairs):
-        b_ch = baseline_sampled[i]
-        c_ch = candidate_sampled[i]
-        pair_eval = evaluate_pair_text_block(
+    num_chapter_groups = min(len(sampled) for sampled in sampled_chapters_by_story.values())
+    chapter_evals: list[dict[str, Any]] = []
+    for i in range(num_chapter_groups):
+        chapter_group = {
+            story_key: sampled_chapters_by_story[story_key][i]
+            for story_key in story_keys
+        }
+        group_eval = evaluate_text_group(
             llm,
             level="chapter",
-            baseline_text=b_ch["text"],
-            candidate_text=c_ch["text"],
-            context=(
-                f"baseline_chapter_index={b_ch['index']}, baseline_word_span={b_ch['start_word']}-{b_ch['end_word']}; "
-                f"candidate_chapter_index={c_ch['index']}, candidate_word_span={c_ch['start_word']}-{c_ch['end_word']}"
+            texts_by_story={story_key: chapter["text"] for story_key, chapter in chapter_group.items()},
+            context="; ".join(
+                [
+                    (
+                        f"{story_key}_chapter_index={chapter_group[story_key]['index']}, "
+                        f"{story_key}_word_span={chapter_group[story_key]['start_word']}-{chapter_group[story_key]['end_word']}"
+                    )
+                    for story_key in story_keys
+                ]
             ),
             source_meta={
-                "pair_index": i + 1,
-                "baseline": {
-                    "chapter_index": b_ch["index"],
-                    "start_word": b_ch["start_word"],
-                    "end_word": b_ch["end_word"],
-                    "word_count": b_ch["word_count"],
-                },
-                "candidate": {
-                    "chapter_index": c_ch["index"],
-                    "start_word": c_ch["start_word"],
-                    "end_word": c_ch["end_word"],
-                    "word_count": c_ch["word_count"],
+                "group_index": i + 1,
+                "stories": {
+                    story_key: {
+                        "chapter_index": chapter_group[story_key]["index"],
+                        "start_word": chapter_group[story_key]["start_word"],
+                        "end_word": chapter_group[story_key]["end_word"],
+                        "word_count": chapter_group[story_key]["word_count"],
+                    }
+                    for story_key in story_keys
                 },
             },
             rng=rng,
         )
-        chapter_pairs.append(pair_eval)
+        chapter_evals.append(group_eval)
 
-    baseline_sentences = split_sentences(baseline_story)
-    candidate_sentences = split_sentences(candidate_story)
-    baseline_sentence_samples = sample_sentences(baseline_sentences, sample_count=SENTENCE_SAMPLE_COUNT)
-    candidate_sentence_samples = sample_sentences(candidate_sentences, sample_count=SENTENCE_SAMPLE_COUNT)
+    sentences_by_story = {
+        story_key: split_sentences(story_text)
+        for story_key, story_text in stories.items()
+    }
+    sampled_sentences_by_story = {
+        story_key: sample_sentences(sentences, sample_count=SENTENCE_SAMPLE_COUNT)
+        for story_key, sentences in sentences_by_story.items()
+    }
 
-    num_sentence_pairs = min(len(baseline_sentence_samples), len(candidate_sentence_samples))
-    sentence_pairs: list[dict[str, Any]] = []
-    for i in range(num_sentence_pairs):
-        b_s = baseline_sentence_samples[i]
-        c_s = candidate_sentence_samples[i]
-        pair_eval = evaluate_pair_text_block(
+    num_sentence_groups = min(len(sampled) for sampled in sampled_sentences_by_story.values())
+    sentence_evals: list[dict[str, Any]] = []
+    for i in range(num_sentence_groups):
+        sentence_group = {
+            story_key: sampled_sentences_by_story[story_key][i]
+            for story_key in story_keys
+        }
+        group_eval = evaluate_text_group(
             llm,
             level="sentence",
-            baseline_text=b_s["text"],
-            candidate_text=c_s["text"],
-            context=f"baseline_sentence_index={b_s['index']}; candidate_sentence_index={c_s['index']}",
+            texts_by_story={story_key: sentence["text"] for story_key, sentence in sentence_group.items()},
+            context="; ".join(
+                [f"{story_key}_sentence_index={sentence_group[story_key]['index']}" for story_key in story_keys]
+            ),
             source_meta={
-                "pair_index": i + 1,
-                "baseline": {"sentence_index": b_s["index"]},
-                "candidate": {"sentence_index": c_s["index"]},
+                "group_index": i + 1,
+                "stories": {
+                    story_key: {"sentence_index": sentence_group[story_key]["index"]}
+                    for story_key in story_keys
+                },
             },
             rng=rng,
         )
-        sentence_pairs.append(pair_eval)
+        sentence_evals.append(group_eval)
 
     aggregates = {
-        "baseline": {
-            "story": _aggregate_level("story", [story_eval], side="baseline"),
-            "chapter": _aggregate_level("chapter", chapter_pairs, side="baseline"),
-            "sentence": _aggregate_level("sentence", sentence_pairs, side="baseline"),
-        },
-        "candidate": {
-            "story": _aggregate_level("story", [story_eval], side="candidate"),
-            "chapter": _aggregate_level("chapter", chapter_pairs, side="candidate"),
-            "sentence": _aggregate_level("sentence", sentence_pairs, side="candidate"),
-        },
+        story_key: {
+            "story": _aggregate_level("story", [story_eval], story_key=story_key),
+            "chapter": _aggregate_level("chapter", chapter_evals, story_key=story_key),
+            "sentence": _aggregate_level("sentence", sentence_evals, story_key=story_key),
+        }
+        for story_key in story_keys
     }
 
     return {
-        "baseline_file": str(baseline_path),
-        "candidate_file": str(candidate_path),
+        "story_files": {
+            story_key: str(path)
+            for story_key, path in zip(story_keys, story_paths)
+        },
         "seed": seed,
         "level_categories": LEVEL_CATEGORIES,
         "plans": {
             "chapter": {
                 "target_words": CHAPTER_WORD_TARGET,
                 "sample_count_target": CHAPTER_SAMPLE_COUNT,
-                "baseline_num_chapters_total": len(baseline_chapters),
-                "candidate_num_chapters_total": len(candidate_chapters),
-                "num_pairs": len(chapter_pairs),
-                "baseline_sampled_chapter_indices": [c["index"] for c in baseline_sampled],
-                "candidate_sampled_chapter_indices": [c["index"] for c in candidate_sampled],
+                "num_groups": len(chapter_evals),
+                "stories": {
+                    story_key: {
+                        "num_chapters_total": len(chapters_by_story[story_key]),
+                        "sampled_chapter_indices": [c["index"] for c in sampled_chapters_by_story[story_key]],
+                    }
+                    for story_key in story_keys
+                },
             },
             "sentence": {
                 "sample_count_target": SENTENCE_SAMPLE_COUNT,
-                "baseline_num_sentences_total": len(baseline_sentences),
-                "candidate_num_sentences_total": len(candidate_sentences),
-                "num_pairs": len(sentence_pairs),
-                "baseline_sampled_sentence_indices": [s["index"] for s in baseline_sentence_samples],
-                "candidate_sampled_sentence_indices": [s["index"] for s in candidate_sentence_samples],
+                "num_groups": len(sentence_evals),
+                "stories": {
+                    story_key: {
+                        "num_sentences_total": len(sentences_by_story[story_key]),
+                        "sampled_sentence_indices": [s["index"] for s in sampled_sentences_by_story[story_key]],
+                    }
+                    for story_key in story_keys
+                },
             },
         },
-        "pairwise_evals": {
+        "group_evals": {
             "story": story_eval,
-            "chapters": chapter_pairs,
-            "sentences": sentence_pairs,
+            "chapters": chapter_evals,
+            "sentences": sentence_evals,
         },
         "aggregates": aggregates,
     }
 
 
-def build_comparison(pair: dict[str, Any]) -> dict[str, Any]:
-    def get_means(side: str, level: str) -> dict[str, float]:
-        agg = pair.get("aggregates", {}).get(side, {}).get(level, {})
+def build_comparison(summary: dict[str, Any]) -> dict[str, Any]:
+    story_files = summary.get("story_files", {})
+    aggregates = summary.get("aggregates", {})
+
+    def get_means(story_key: str, level: str) -> dict[str, float]:
+        agg = aggregates.get(story_key, {}).get(level, {})
         means = agg.get("category_means", {})
         if not isinstance(means, dict):
             means = {}
         return {cat: float(means.get(cat, 0.0)) for cat in LEVEL_CATEGORIES[level]}
 
-    deltas: dict[str, Any] = {}
+    story_keys = list(story_files.keys())
+    rankings: dict[str, Any] = {}
     for level in CATEGORY_ORDER:
-        base_means = get_means("baseline", level)
-        cand_means = get_means("candidate", level)
-        deltas[level] = {cat: cand_means[cat] - base_means[cat] for cat in LEVEL_CATEGORIES[level]}
+        rankings[level] = sorted(
+            [
+                {
+                    "story_key": story_key,
+                    "file": story_files.get(story_key),
+                    "overall_mean": float(aggregates.get(story_key, {}).get(level, {}).get("overall_mean", 0.0)),
+                    "category_means": get_means(story_key, level),
+                }
+                for story_key in story_keys
+            ],
+            key=lambda item: item["overall_mean"],
+            reverse=True,
+        )
 
     return {
-        "baseline": pair.get("baseline_file"),
-        "candidate": pair.get("candidate_file"),
-        "delta_candidate_minus_baseline_category_means": deltas,
+        "story_files": story_files,
+        "rankings": rankings,
     }
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Pairwise rubric-evaluate story quality from two txt files. "
-            "Randomizes which version is shown first (A vs B) per evaluation. "
+            "Rubric-evaluate story quality from two or three txt files. "
+            "Each evaluation call compares all provided stories together in a single pass. "
+            "Randomizes which version is shown first (A/B or A/B/C) per evaluation. "
             "Scores are 0-100 for each category (per version), plus an overall score. "
             "The story is extracted from the last STORY START/END block."
         )
     )
-    parser.add_argument("baseline", help="Path to baseline txt file")
-    parser.add_argument("candidate", help="Path to candidate/framework txt file")
+    parser.add_argument(
+        "stories",
+        nargs="+",
+        help="Paths to 2 or 3 story txt files",
+    )
     parser.add_argument(
         "--model",
         default=os.getenv("EVAL_LLM_MODEL", os.getenv("OPENAI_MODEL", "gpt-5.4-mini")),
@@ -600,11 +654,12 @@ def main() -> None:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise EvalError("OPENAI_API_KEY is required")
+    if len(args.stories) not in {2, 3}:
+        raise EvalError("Provide exactly 2 or 3 story files")
 
     llm = OpenAILLM(api_key=api_key, model=args.model, base_url=args.base_url)
 
-    pair = evaluate_story_pair(Path(args.baseline), Path(args.candidate), llm, seed=args.seed)
-    output: dict[str, Any] = {"pairwise": pair, "comparison": build_comparison(pair)}
+    output = evaluate_story_set([Path(story) for story in args.stories], llm, seed=args.seed)
 
     rendered = json.dumps(output, indent=2, ensure_ascii=False)
     print(rendered)

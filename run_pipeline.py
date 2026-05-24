@@ -114,6 +114,7 @@ def main() -> None:
     print("--- story ---")
     for paragraph in result["story"]:
         print(paragraph)
+        print()
 
     log_path = os.getenv("GEMINI_OUTPUT_LOG_PATH", "llm_output.txt")
     try:
@@ -122,9 +123,8 @@ def main() -> None:
                 f"[{datetime.now(timezone.utc).isoformat()}] FINAL STORY\n"
                 "=== STORY START ===\n"
             )
-            for paragraph in result["story"]:
-                handle.write(f"{paragraph}\n")
-            handle.write("=== STORY END ===\n\n")
+            handle.write("\n\n".join(result["story"]))
+            handle.write("\n=== STORY END ===\n\n")
     except OSError:
         pass
 
