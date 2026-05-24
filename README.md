@@ -373,3 +373,5 @@ Artifacts:
 - `llm_output.txt`: prompt/output log by default
 - `artifacts/dpo_preferences.jsonl`: default generated DPO preference dataset
 - `artifacts/gemma-action-dpo`: default trained DPO adapter directory
+
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
