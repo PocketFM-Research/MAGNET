@@ -374,4 +374,7 @@ Artifacts:
 - `artifacts/dpo_preferences.jsonl`: default generated DPO preference dataset
 - `artifacts/gemma-action-dpo`: default trained DPO adapter directory
 
+## License
+
+This project is licensed under the MIT License.
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
