@@ -1,6 +1,6 @@
-# pocketfm-world-models
+# From Personas to Plot: Character-Grounded Multi-Agent Story Generation for Long-Form Narratives
 
-`pocketfm-world-models` is a multi-agent story simulation for generating character-driven narratives with an LLM-backed world model. By default it runs entirely through Gemini, but it can also use Anthropic-hosted models, local Hugging Face/Transformers models, or a locally trained DPO action adapter for character action generation.
+`MAGNET` is a multi-agent goal-driven narrative engine for storytelling. By default it runs entirely through Gemini, but it can also use Anthropic-hosted models, local Hugging Face/Transformers models, or a locally trained DPO action adapter for character action generation.
 
 The loop is:
 
