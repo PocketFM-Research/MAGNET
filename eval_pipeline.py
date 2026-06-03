@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -248,11 +249,17 @@ def sample_sentences(sentences: list[str], sample_count: int = SENTENCE_SAMPLE_C
     return out
 
 
-def sample_chapters(chapters: list[dict[str, Any]], sample_count: int = CHAPTER_SAMPLE_COUNT) -> list[dict[str, Any]]:
+def sample_chapters(
+    chapters: list[dict[str, Any]],
+    sample_count: int = CHAPTER_SAMPLE_COUNT,
+    *,
+    rng: random.Random,
+) -> list[dict[str, Any]]:
     if not chapters:
         return []
     if len(chapters) <= sample_count:
         selected = list(range(len(chapters)))
+        selected.extend(rng.randrange(len(chapters)) for _ in range(sample_count - len(chapters)))
     else:
         selected = sorted({round(i * (len(chapters) - 1) / (sample_count - 1)) for i in range(sample_count)})
     return [chapters[idx] for idx in selected]
@@ -331,7 +338,7 @@ def evaluate_text_block(
     }
 
 
-def evaluate_story_file(path: Path, llm: OpenAILLM) -> dict[str, Any]:
+def evaluate_story_file(path: Path, llm: OpenAILLM, *, rng: random.Random) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8")
     story = extract_story_block(text)
     story_eval = evaluate_text_block(
@@ -342,7 +349,7 @@ def evaluate_story_file(path: Path, llm: OpenAILLM) -> dict[str, Any]:
     )
 
     chapters = chunk_story_by_words(story, target_words=CHAPTER_WORD_TARGET)
-    sampled_chapters = sample_chapters(chapters, sample_count=CHAPTER_SAMPLE_COUNT)
+    sampled_chapters = sample_chapters(chapters, sample_count=CHAPTER_SAMPLE_COUNT, rng=rng)
     chapter_evals: list[dict[str, Any]] = []
     for chapter in sampled_chapters:
         chapter_eval = evaluate_text_block(
@@ -477,6 +484,12 @@ def parse_args() -> argparse.Namespace:
         default=os.getenv("EVAL_OUTPUT_PATH", "eval_output.txt"),
         help="Path to write evaluation JSON output (default: EVAL_OUTPUT_PATH or eval_output.txt)",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=int(os.getenv("EVAL_SEED", "0")),
+        help="Random seed for chapter resampling when fewer than 5 chapters are available (default: EVAL_SEED or 0)",
+    )
     return parser.parse_args()
 
 
@@ -487,12 +500,13 @@ def main() -> None:
         raise EvalError("OPENAI_API_KEY is required")
 
     llm = OpenAILLM(api_key=api_key, model=args.model, base_url=args.base_url)
+    rng = random.Random(args.seed)
 
-    first = evaluate_story_file(Path(args.one), llm)
+    first = evaluate_story_file(Path(args.one), llm, rng=rng)
     output: dict[str, Any] = {"one": first}
 
     if args.two:
-        second = evaluate_story_file(Path(args.two), llm)
+        second = evaluate_story_file(Path(args.two), llm, rng=rng)
         output["two"] = second
         output["comparison"] = build_comparison(first, second)
 

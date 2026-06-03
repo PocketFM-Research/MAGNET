@@ -255,11 +255,17 @@ def sample_sentences(sentences: list[str], sample_count: int = SENTENCE_SAMPLE_C
     return out
 
 
-def sample_chapters(chapters: list[dict[str, Any]], sample_count: int = CHAPTER_SAMPLE_COUNT) -> list[dict[str, Any]]:
+def sample_chapters(
+    chapters: list[dict[str, Any]],
+    sample_count: int = CHAPTER_SAMPLE_COUNT,
+    *,
+    rng: random.Random,
+) -> list[dict[str, Any]]:
     if not chapters:
         return []
     if len(chapters) <= sample_count:
         selected = list(range(len(chapters)))
+        selected.extend(rng.randrange(len(chapters)) for _ in range(sample_count - len(chapters)))
     else:
         selected = sorted({round(i * (len(chapters) - 1) / (sample_count - 1)) for i in range(sample_count)})
     return [chapters[idx] for idx in selected]
@@ -452,7 +458,7 @@ def evaluate_story_set(
         for story_key, story_text in stories.items()
     }
     sampled_chapters_by_story = {
-        story_key: sample_chapters(chapters, sample_count=CHAPTER_SAMPLE_COUNT)
+        story_key: sample_chapters(chapters, sample_count=CHAPTER_SAMPLE_COUNT, rng=rng)
         for story_key, chapters in chapters_by_story.items()
     }
 
