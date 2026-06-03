@@ -439,6 +439,61 @@ class LocalTransformersLLM:
         user_prompt: str,
         temperature: float = 0.1,
     ) -> dict[str, Any]:
+        task_name = self._extract_task_name(user_prompt)
+        content = self._generate_content(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=temperature,
+            max_new_tokens=self.max_new_tokens,
+        )
+        content = self._sanitize_generated_content(content)
+        self._append_output_log(system_prompt, user_prompt, content)
+        try:
+            payload = _parse_json_object_with_repair(content, "Local transformers")
+            return self._normalize_payload(task_name, payload)
+        except LLMError:
+            pass
+
+        recovered = self._recover_payload(task_name, content)
+        if recovered is not None:
+            return self._normalize_payload(task_name, recovered)
+
+        retry_content = self._generate_content(
+            system_prompt=system_prompt,
+            user_prompt=(
+                user_prompt
+                + "\nThe previous answer was invalid because it included prose instead of JSON. "
+                + "Return exactly one JSON object only. Do not include Thought, markdown, code fences, "
+                + "or any text outside the JSON object."
+            ),
+            temperature=0.0,
+            max_new_tokens=min(self.max_new_tokens, 96),
+        )
+        retry_content = self._sanitize_generated_content(retry_content)
+        self._append_output_log(system_prompt, user_prompt, retry_content)
+        try:
+            payload = _parse_json_object_with_repair(retry_content, "Local transformers")
+            return self._normalize_payload(task_name, payload)
+        except LLMError:
+            pass
+
+        recovered = self._recover_payload(task_name, retry_content)
+        if recovered is not None:
+            return self._normalize_payload(task_name, recovered)
+
+        fallback = self._fallback_payload(task_name)
+        if fallback is not None:
+            return fallback
+
+        raise LLMError(f"Local transformers returned non-JSON content: {retry_content[:300]}")
+
+    def _generate_content(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float,
+        max_new_tokens: int,
+    ) -> str:
         prompt_text = self._build_prompt_text(
             [
                 {"role": "system", "content": system_prompt},
@@ -453,13 +508,14 @@ class LocalTransformersLLM:
         if model_device is not None:
             inputs = {key: value.to(model_device) for key, value in inputs.items()}
 
-        generation_kwargs = self._build_generation_kwargs(temperature=temperature)
+        generation_kwargs = self._build_generation_kwargs(
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
+        )
         output_ids = self._model.generate(**inputs, **generation_kwargs)
         prompt_length = int(inputs["input_ids"].shape[-1])
         generated_ids = output_ids[0][prompt_length:]
-        content = self._tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
-        self._append_output_log(system_prompt, user_prompt, content)
-        return _parse_json_object_with_repair(content, "Local transformers")
+        return self._tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
 
     def _load_model(self) -> tuple[Any, Any]:
         try:
@@ -493,12 +549,14 @@ class LocalTransformersLLM:
         model.eval()
         return model, tokenizer
 
-    def _build_generation_kwargs(self, temperature: float) -> dict[str, Any]:
+    def _build_generation_kwargs(self, temperature: float, max_new_tokens: int) -> dict[str, Any]:
         resolved_temperature = self.temperature if self.temperature is not None else temperature
         generation_kwargs: dict[str, Any] = {
-            "max_new_tokens": self.max_new_tokens,
+            "max_new_tokens": max_new_tokens,
             "pad_token_id": self._tokenizer.pad_token_id,
             "eos_token_id": self._tokenizer.eos_token_id,
+            "repetition_penalty": 1.15,
+            "no_repeat_ngram_size": 4,
         }
         if resolved_temperature > 0:
             generation_kwargs["do_sample"] = True
@@ -538,6 +596,41 @@ class LocalTransformersLLM:
             )
         except Exception:
             return ActionAdapterLLM._normalize_messages_for_template(messages)
+
+    @staticmethod
+    def _sanitize_generated_content(content: str) -> str:
+        return ActionAdapterLLM._sanitize_generated_content(content)
+
+    @staticmethod
+    def _extract_task_name(user_prompt: str) -> str:
+        match = re.search(r"^\s*TASK=([A-Za-z0-9_:-]+)", user_prompt, flags=re.MULTILINE)
+        if not match:
+            return ""
+        return match.group(1).strip().lower()
+
+    @staticmethod
+    def _normalize_payload(task_name: str, payload: dict[str, Any]) -> dict[str, Any]:
+        if task_name == "action":
+            return ActionAdapterLLM._normalize_action_payload(payload)
+        return payload
+
+    @staticmethod
+    def _recover_payload(task_name: str, content: str) -> dict[str, Any] | None:
+        if task_name == "action":
+            return ActionAdapterLLM._recover_action_payload(content)
+        return None
+
+    @staticmethod
+    def _fallback_payload(task_name: str) -> dict[str, Any] | None:
+        if task_name == "action":
+            return ActionAdapterLLM._normalize_action_payload(
+                {
+                    "action": "look around for a concrete next step",
+                    "confidence": 0.1,
+                    "rationale": "local model emitted non-json",
+                }
+            )
+        return None
 
 
 def _normalize_provider_name(raw_provider: str | None) -> str:
