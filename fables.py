@@ -752,97 +752,7 @@ def define_hospital_night_shift_fable() -> FableDefinition:
     )
 
 
-def define_launch_control_fable() -> FableDefinition:
-    characters = [
-        CharacterProfile(
-            name="Nadia",
-            role="flight director",
-            traits=["decisive", "focused", "protective"],
-            goals=["keep the crew safe", "decide whether to scrub the launch", "prevent reputation from overriding procedure"],
-            fears=["missing a hazard because the room wants liftoff", "being remembered for a preventable disaster"],
-            abilities=["coordinate specialists under pressure", "translate risk into action", "stay calm when others escalate"],
-            relationships={
-                "Evan": "propulsion engineer whose instincts she trusts but needs to challenge",
-                "Priya": "mission commander aboard the capsule",
-                "Julian": "program director pushing for the launch to proceed",
-            },
-            state={"in_flight_control": True, "countdown_active": True, "responsible_for_launch": True},
-            description=(
-                "A flight director whose job is to say the hard sentence everyone hopes not to hear: we stop now, because the alternative is worse."
-            ),
-        ),
-        CharacterProfile(
-            name="Evan",
-            role="propulsion engineer",
-            traits=["brilliant", "nervy", "precise"],
-            goals=["determine whether the engine anomaly is real or sensor noise", "prove he did not miss a critical warning", "help Nadia make the right call"],
-            fears=["being the person who overlooked the flaw", "causing the launch to fail after years of work"],
-            abilities=["read telemetry fast", "spot tiny inconsistencies", "explain technical risk clearly"],
-            relationships={
-                "Nadia": "flight director he wants to impress and protect",
-                "Priya": "crew commander whose life depends on his judgment",
-                "Julian": "executive who wants certainty Evan cannot honestly give",
-            },
-            state={"on_console": True, "worried": True, "caught_between_safety_and_schedule": True},
-            description=(
-                "A propulsion specialist who knows the engine data better than anyone in the room, and knows enough to be afraid of what he cannot yet prove."
-            ),
-        ),
-        CharacterProfile(
-            name="Priya",
-            role="mission commander",
-            traits=["steady", "experienced", "unsentimental"],
-            goals=["return the crew safely", "trust the ground team without surrendering agency", "avoid being used as a symbol for someone else's decision"],
-            fears=["discovering too late that the launch was unsafe", "being told to stay inspirational while others gamble with her life"],
-            abilities=["keep a crew focused", "communicate under pressure", "make disciplined choices in crisis"],
-            relationships={
-                "Nadia": "ground commander she relies on",
-                "Evan": "engine specialist whose voice she listens for",
-                "Jalen": "pilot and crew partner who watches her back",
-            },
-            state={"aboard_capsule": True, "suited_up": True, "ready_if_called": True},
-            description=(
-                "A mission commander who has trained for years to trust the process, but not to obey it blindly when the room starts cutting corners."
-            ),
-        ),
-        CharacterProfile(
-            name="Julian",
-            role="program director",
-            traits=["charismatic", "political", "hard to read"],
-            goals=["keep the launch on schedule", "protect the program from public embarrassment", "avoid a scrub that could cost funding"],
-            fears=["a visible failure in front of investors and press", "losing control of the narrative"],
-            abilities=["pressure teams without sounding harsh", "frame risk as opportunity", "make delay feel expensive"],
-            relationships={
-                "Nadia": "flight director he needs to persuade",
-                "Evan": "engineer he thinks is overcautious",
-                "Priya": "astronaut who can ruin his day if she refuses to go",
-            },
-            state={"at_press_window": True, "impatient": True, "public_facing": True},
-            description=(
-                "The program's public face, skilled at selling momentum and just plausible enough that everyone else has to work to prove him wrong."
-            ),
-        ),
-    ]
 
-    return FableDefinition(
-        name="launch_control_abort",
-        goal="Before the countdown reaches zero, Nadia must decide whether to scrub the launch after a possible engine anomaly, even if it humiliates the program, or trust incomplete data and risk launching a crew into danger.",
-        characters=characters,
-        initial_world_vars={
-            "goal_reached": False,
-            "setting": "A coastal rocket launch complex during the final ten minutes before liftoff.",
-            "countdown_status": "The vehicle is fueled, the crew is strapped in, and the launch room is watching a telemetry spike that may be harmless or catastrophic.",
-            "engine_anomaly": "One sensor on the first stage has reported an intermittent pressure drop that could be a bad reading or the first sign of a hardware fault.",
-            "public_pressure": "The launch has been delayed twice already, journalists are at the fence line, and the program cannot easily absorb another scrub.",
-            "safety_conflict": "The flight team knows that the mission can be delayed, but the crew cannot get the benefit of a perfect answer in the time remaining.",
-        },
-        progress_reward=0.5,
-        fallback_reward=0.0,
-        completion_key="goal_reached",
-    )
-
-
-def define_arctic_research_fable() -> FableDefinition:
     characters = [
         CharacterProfile(
             name="Sera",
@@ -932,6 +842,186 @@ def define_arctic_research_fable() -> FableDefinition:
     )
 
 
+def define_orchestra_premiere_fable() -> FableDefinition:
+    characters = [
+        CharacterProfile(
+            name="Celia",
+            role="guest conductor",
+            traits=["brilliant", "demanding", "emotionally disciplined"],
+            goals=["save the orchestra's live premiere after the maestro collapses", "earn the musicians' trust without imitating her predecessor", "decide whether excellence is worth the human cost she keeps normalizing"],
+            fears=["losing control of the ensemble in public", "becoming known as a technically great leader nobody would choose twice"],
+            abilities=["hear structural problems instantly", "command a room under pressure", "pull bold performances from reluctant players"],
+            relationships={
+                "Matteo": "concertmaster who resents being passed over for the podium",
+                "Lena": "young soloist whose confidence she may be bruising",
+                "Ruth": "executive director demanding a flawless public night",
+            },
+            state={"backstage": True, "in_charge_tonight": True, "under_scrutiny": True},
+            description=(
+                "A celebrated guest conductor known for rescuing difficult performances, suddenly handed the biggest night in the city's musical season with almost no time to turn authority into trust."
+            ),
+        ),
+        CharacterProfile(
+            name="Matteo",
+            role="concertmaster",
+            traits=["proud", "protective", "artistically exacting"],
+            goals=["keep the orchestra from humiliating itself on stage", "protect the ensemble from Celia's worst instincts", "decide whether to sabotage her authority or help her succeed"],
+            fears=["watching the orchestra become a vehicle for someone else's ambition", "admitting that his resentment is partly personal failure"],
+            abilities=["steady sections through eye contact and timing", "read musician morale instantly", "translate abstract musical ideas into playable choices"],
+            relationships={
+                "Celia": "conductor he mistrusts but cannot ignore",
+                "Lena": "soloist he has mentored since conservatory days",
+                "Ruth": "administrator who values his prestige until it becomes inconvenient",
+            },
+            state={"onstage_leader": True, "resentful": True, "considering_defiance": True},
+            description=(
+                "The orchestra's longtime concertmaster, widely expected to conduct one day himself, now forced to decide whether loyalty to the music requires backing the woman who just inherited his chance."
+            ),
+        ),
+        CharacterProfile(
+            name="Lena",
+            role="pianist",
+            traits=["gifted", "sensitive", "more stubborn than she looks"],
+            goals=["deliver the concerto that could launch her international career", "stop letting older artists define her limits", "decide whether to ask for the slower interpretation she actually needs"],
+            fears=["cracking publicly under pressure", "being praised only when she is obedient enough to disappear into someone else's vision"],
+            abilities=["play with emotional clarity", "adjust quickly in rehearsal", "hear when performance notes are really power plays"],
+            relationships={
+                "Celia": "conductor whose brilliance feels both thrilling and dangerous",
+                "Matteo": "mentor who wants to protect her, sometimes too much",
+                "Ruth": "executive director selling her as the face of the season",
+            },
+            state={"soloist_tonight": True, "shaken": True, "needs_advocacy": False},
+            description=(
+                "A twenty-six-year-old pianist making her debut with the city's flagship orchestra, trying to tell the difference between being pushed toward greatness and being pushed past what is safe."
+            ),
+        ),
+        CharacterProfile(
+            name="Ruth",
+            role="executive director",
+            traits=["polished", "calculating", "genuinely devoted to the institution"],
+            goals=["get the gala broadcast on the air without scandal", "turn tonight into a donor triumph despite the conductor crisis", "keep private artistic conflict from becoming public narrative"],
+            fears=["a visible failure that costs the orchestra its endowment campaign", "being forced to choose between artistic truth and institutional survival"],
+            abilities=["manage patrons and press", "convert panic into talking points", "pressure artists without sounding crude"],
+            relationships={
+                "Celia": "emergency solution she needs to look inevitable",
+                "Matteo": "star musician whose ego she knows how to flatter",
+                "Lena": "young soloist she is already turning into marketing copy",
+            },
+            state={"hosting_gala": True, "media_waiting": True, "suppressing_crisis": True},
+            description=(
+                "The executive director of a prestigious orchestra, equally fluent in music-board idealism and donor panic, trying to keep a cultural institution from revealing how fragile it really is."
+            ),
+        ),
+    ]
+
+    return FableDefinition(
+        name="orchestra_premiere_crisis",
+        goal="Before the televised gala performance begins, Celia must decide whether to force her uncompromising interpretation through a frightened orchestra and a wavering soloist or reshape the performance into something the ensemble can truly own, even if it costs her the triumph she came for.",
+        characters=characters,
+        initial_world_vars={
+            "goal_reached": False,
+            "setting": "A major city's symphony hall during the chaotic final hours before a televised season-opening gala.",
+            "performance_crisis": "The longtime music director collapsed during dress rehearsal, leaving Celia to take over a difficult concerto and a finale the orchestra barely trusts tonight.",
+            "ensemble_tension": "Several principal players believe Celia is treating the musicians like replaceable instruments, while Celia believes they are hiding fear behind procedural objections.",
+            "public_pressure": "Donors, critics, and a live broadcast audience are expecting a triumphant night that will define the orchestra's season and fundraising campaign.",
+            "artistic_stakes": "If the performance holds, it could launch Lena's career and cement Celia's reputation; if it fractures, private resentments will become public damage the institution cannot easily spin away.",
+        },
+        progress_reward=0.5,
+        fallback_reward=0.0,
+        completion_key="goal_reached",
+    )
+
+
+def define_union_strike_fable() -> FableDefinition:
+    characters = [
+        CharacterProfile(
+            name="Marisol",
+            role="union steward",
+            traits=["fierce", "strategic", "overextended"],
+            goals=["hold the picket line together through the company's last offer", "protect newer workers from retaliation", "decide how much risk she can ask others to carry"],
+            fears=["leading people into a strike they cannot survive financially", "settling too early and teaching management that fear works"],
+            abilities=["organize under pressure", "read group morale", "turn anger into disciplined action"],
+            relationships={
+                "Ben": "warehouse supervisor turned management messenger and former friend",
+                "Keisha": "single mother and picker whose vote could influence half the floor",
+                "Arman": "labor lawyer trying to keep the company from breaking the strike illegally",
+            },
+            state={"on_picket_line": True, "strike_authorized": True, "sleep_deprived": True},
+            description=(
+                "A warehouse worker who became steward because nobody else would keep management honest, now responsible for hundreds of livelihoods as contract talks harden into a test of collective nerve."
+            ),
+        ),
+        CharacterProfile(
+            name="Ben",
+            role="operations supervisor",
+            traits=["pragmatic", "conflicted", "loyal to order"],
+            goals=["keep the warehouse from shutting down completely", "convince Marisol to accept a flawed deal before corporate brings in replacements", "prove to himself he did not betray his old crew for nothing"],
+            fears=["becoming the face of the company's intimidation", "losing the respect of people who knew him before the promotion"],
+            abilities=["translate corporate pressure into local consequences", "anticipate how the floor will react", "keep crises from becoming chaos"],
+            relationships={
+                "Marisol": "former coworker and friend now standing across the line from him",
+                "Keisha": "worker he knows cannot afford many missed paychecks",
+                "Arman": "lawyer watching for every misstep he makes",
+            },
+            state={"inside_warehouse": True, "caught_between_sides": True, "carrying_offer": True},
+            description=(
+                "A floor supervisor promoted out of the bargaining unit just before negotiations collapsed, now trying to act like management's plan is merely difficult instead of punitive."
+            ),
+        ),
+        CharacterProfile(
+            name="Keisha",
+            role="picker",
+            traits=["hardworking", "funny", "anxious beneath the surface"],
+            goals=["vote for the course that gives her daughter the best chance at stability", "stop being treated as if fear makes her disloyal", "decide whether solidarity can feed a family this month"],
+            fears=["missing rent", "being remembered as the one who broke the line if she crosses"],
+            abilities=["read the mood of ordinary workers", "speak bluntly about practical costs", "earn trust across cliques on the floor"],
+            relationships={
+                "Marisol": "steward she admires but cannot afford to romanticize",
+                "Ben": "supervisor who keeps hinting he can protect her if she is reasonable",
+                "Arman": "lawyer whose reassurances sound thinner than her bills",
+            },
+            state={"undecided_vote": True, "financially_stretched": True, "widely_respected": True},
+            description=(
+                "A veteran picker and single mother whose opinion matters because everyone knows she is not performing bravery for anyone and will say exactly what survival costs."
+            ),
+        ),
+        CharacterProfile(
+            name="Arman",
+            role="labor lawyer",
+            traits=["precise", "idealistic", "tired of euphemism"],
+            goals=["document the company's retaliation threats", "give the union enough legal cover to fight smart", "push Marisol to separate symbolic wins from enforceable ones"],
+            fears=["arriving with the law after the human damage is already done", "watching workers mistake bad process for inevitable defeat"],
+            abilities=["spot unfair labor practices", "explain legal leverage clearly", "stay calm while others spiral"],
+            relationships={
+                "Marisol": "organizer he respects and occasionally needs to restrain",
+                "Ben": "management representative he distrusts but studies closely",
+                "Keisha": "worker whose concrete questions keep him honest",
+            },
+            state={"collecting_affidavits": True, "injunction_possible": False, "monitoring_company": True},
+            description=(
+                "A labor attorney called in when the dispute stopped being just about wages and started becoming a referendum on whether workers can still act together without being quietly crushed."
+            ),
+        ),
+    ]
+
+    return FableDefinition(
+        name="warehouse_strike_vote",
+        goal="Before dawn brings the company's deadline and a threat to hire permanent replacements, Marisol must decide whether to keep the warehouse workers on strike for a stronger contract or recommend a compromise that preserves paychecks but may break the union's leverage for years.",
+        characters=characters,
+        initial_world_vars={
+            "goal_reached": False,
+            "setting": "A massive regional fulfillment warehouse and its picket line during a humid overnight contract standoff.",
+            "labor_conflict": "After months of mandatory overtime, injury complaints, and stalled bargaining, the workers have walked out and management has issued a final offer designed to split the room.",
+            "economic_pressure": "Many workers are living paycheck to paycheck, the strike fund is limited, and the company knows exactly how long ordinary fear takes to rip holes in solidarity.",
+            "company_tactic": "Corporate is hinting it will bus in permanent replacements at first light while privately signaling that some workers could still be welcomed back if they break ranks early.",
+            "decision_point": "A mass vote is coming before sunrise, and whatever Marisol recommends will shape not just this contract but whether the workers still believe they can trust one another afterward.",
+        },
+        progress_reward=0.5,
+        fallback_reward=0.0,
+        completion_key="goal_reached",
+    )
+
+
 def get_fable_definition(name: str) -> FableDefinition:
     key = name.lower().strip()
     if key in {"corner_store_last_week", "corner_store", "maya_story", "maya store", "maya story"}:
@@ -950,8 +1040,8 @@ def get_fable_definition(name: str) -> FableDefinition:
         return define_museum_restitution_fable()
     if key in {"hospital_night_shift", "hospital_story", "night_shift", "er_story", "hospital"}:
         return define_hospital_night_shift_fable()
-    if key in {"launch_control_abort", "launch_story", "rocket_launch", "mission_control", "launch"}:
-        return define_launch_control_fable()
-    if key in {"arctic_research_storm", "arctic_story", "research_station", "polar_station", "arctic"}:
-        return define_arctic_research_fable()
+    if key in {"orchestra_premiere_crisis", "orchestra_story", "symphony_story", "concert_crisis", "orchestra"}:
+        return define_orchestra_premiere_fable()
+    if key in {"warehouse_strike_vote", "strike_story", "warehouse_strike", "union_story", "strike", "warehouse"}:
+        return define_union_strike_fable()
     raise ValueError(f"Unknown fable definition '{name}'.")
