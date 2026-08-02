@@ -242,7 +242,6 @@ def convert_row_to_preference_example(
         str(payload.get("persona", "")),
         str(payload.get("goal", "")),
         payload.get("world_vars", {}) if isinstance(payload.get("world_vars", {}), dict) else {},
-        list(payload.get("memory_snippets", [])) if isinstance(payload.get("memory_snippets", []), list) else [],
         list(payload.get("world_knowledge", [])) if isinstance(payload.get("world_knowledge", []), list) else [],
         list(payload.get("recent_story", [])) if isinstance(payload.get("recent_story", []), list) else [],
         None,

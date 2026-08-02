@@ -8,7 +8,6 @@ The loop is:
 - a critic checks whether the action is plausible, in-character, non-repetitive, and goal-relevant
 - a narrator chooses which proposed actions become canonical story events
 - the environment applies selected `world_updates` to a graph-backed world state
-- optional RAG memory stores narrated beats and retrieves relevant prior context
 
 ## Current Behavior
 
@@ -19,21 +18,18 @@ Default runtime values:
 - story: `missing_will`, which maps to `the_missing_codicil`
 - max steps: `30`
 - max plan revisions: `1`
-- RAG: disabled unless `--use-rag` or `USE_RAG=1` is set
-- RAG retrieval count: `2`
 
 By default, critic, narrator, next-goal generation, and character actions all use Gemini 2.5 Flash. If `LLM_PROVIDER=anthropic` is set, the hosted pipeline switches to Anthropic instead. If `LLM_PROVIDER=local` is set, critic, narrator, next-goal generation, and hosted-style actions run through a local Hugging Face/Transformers causal LM. If `ACTION_MODEL_PATH` is set, character action generation uses the local DPO adapter loaded by `ActionAdapterLLM` regardless of the provider used for critic, narrator, and follow-up goal generation.
 
 ## Architecture
 
 - [`run_pipeline.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/run_pipeline.py): CLI entrypoint, story selection, model wiring, graph export, and final story logging
-- [`pipeline.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/pipeline.py): simulation loop, optional memory use, narrator selection, and goal progression
+- [`pipeline.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/pipeline.py): simulation loop, narrator selection, and goal progression
 - [`agents.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/agents.py): `CharacterAgent` and `NarratorAgent`
 - [`environment.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/environment.py): `networkx.DiGraph` world state and protected state updates
 - [`fables.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/fables.py): built-in story definitions and aliases
 - [`prompts.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/prompts.py): action, critic, narrator, and next-goal prompts
 - [`llm.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/llm.py): Gemini, Anthropic, local Transformers, and local DPO action-adapter inference
-- [`memory.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/memory.py): optional structured memory with embedding retrieval
 - [`generate_dpo_dataset.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/generate_dpo_dataset.py): preference dataset generation from story rollouts
 - [`train_dpo.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/train_dpo.py): LoRA DPO adapter training
 - [`sim_types.py`](/Users/chloeho/Documents/pocketfm/pocketfm-world-models/sim_types.py): shared dataclasses
@@ -66,8 +62,6 @@ pip install -r requirements.txt
 Core dependencies include:
 
 - `networkx`
-- `llama-index-core`
-- `llama-index-embeddings-huggingface`
 - `torch`
 - `transformers`
 - `peft`
@@ -101,8 +95,6 @@ General runtime:
 - `FABLE_NAME`: optional fallback story name for `run_pipeline.py`
 - `MAX_STEPS`: optional fallback for `--steps`, defaults to `30`
 - `MAX_PLAN_REVISIONS`: optional fallback for `--max-plan-revisions`, defaults to `1`
-- `USE_RAG`: optional, set to `1`, `true`, or `yes` to enable memory retrieval
-- `RAG_K`: optional fallback for `--rag-k`, defaults to `2`
 - `WORLD_GRAPH_OUTPUT_PATH`: optional, defaults to `final_world_graph.json`
 - `CRITIC_LLM_PROVIDER`: optional provider override for critic calls; falls back to `LLM_PROVIDER`
 - `CRITIC_LLM_MODEL`: optional model override for critic calls; falls back to `LLM_MODEL` and provider defaults
@@ -156,13 +148,6 @@ Run a specific story:
 ```bash
 export GEMINI_API_KEY=your_api_key_here
 python run_pipeline.py --story flood_rescue --steps 25
-```
-
-Enable memory retrieval:
-
-```bash
-export GEMINI_API_KEY=your_api_key_here
-python run_pipeline.py --story radio --use-rag --rag-k 3
 ```
 
 Run with a local DPO action adapter:
@@ -259,7 +244,6 @@ Useful options:
 - `--max-steps`: maximum steps per rollout, defaults to `8`
 - `--output`: JSONL output path, defaults to `artifacts/dpo_preferences.jsonl`
 - `--overwrite`: replace the output file instead of appending
-- `--rag-k`: memory snippets per decision, defaults to `0`
 - `--temperature`: candidate action sampling temperature, defaults to `0.8`
 - `--max-new-goals`: follow-up goals per episode, defaults to `1`
 - `--seed`: candidate-order and retry seed, defaults to `42`
@@ -320,15 +304,13 @@ By default, training omits rationales from completions so the preference loss fo
 For each timestep:
 
 1. the pipeline reads current world variables and the active goal
-2. each character optionally retrieves memory snippets when RAG is enabled
-3. the character agent builds an action prompt from persona, goal, curated world knowledge, recent scenes, memory snippets, and revision feedback when present
-4. the action LLM proposes JSON with `action`, `confidence`, and `rationale`
-5. the critic LLM evaluates the action and may request revision
-6. the narrator LLM selects a small subset of proposed actions and writes one scene paragraph
-7. selected actions are applied to the environment
-8. optional memory records the narrated beat
-9. if the current goal completes, the narrator LLM generates a follow-up goal
-10. if a goal has not completed after 15 timesteps since it became active, the narrator LLM replaces it with a feasible goal based on the current story state
+2. the character agent builds an action prompt from persona, goal, curated world knowledge, recent scenes, and revision feedback when present
+3. the action LLM proposes JSON with `action`, `confidence`, and `rationale`
+4. the critic LLM evaluates the action and may request revision
+5. the narrator LLM selects a small subset of proposed actions and writes one scene paragraph
+6. selected actions are applied to the environment
+7. if the current goal completes, the narrator LLM generates a follow-up goal
+8. if a goal has not completed after 15 timesteps since it became active, the narrator LLM replaces it with a feasible goal based on the current story state
 
 ## World Model
 

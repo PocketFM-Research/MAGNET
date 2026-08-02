@@ -15,8 +15,6 @@ class Config:
     arc_goal_steps: int = 40
     enable_world_state_updates: bool = True
     enable_goal_shifts: bool = True
-    use_rag: bool = False
-    rag_k: int = 3
 
 
 class Pipeline:
@@ -26,15 +24,12 @@ class Pipeline:
         critic_llm: object | None = None,
         narrator_llm: object | None = None,
         action_llm: object | None = None,
-        use_rag: bool = False,
     ) -> None:
         default_llm = llm or build_default_llm()
         self.llm = default_llm
         self.critic_llm = critic_llm or build_critic_llm(default_llm=default_llm)
         self.narrator_llm = narrator_llm or build_narrator_llm(default_llm=default_llm)
         self.action_llm = action_llm or build_action_llm(default_llm=self.critic_llm)
-        self.use_rag = use_rag
-        self.memory = self._build_memory() if use_rag else None
 
     def run(self, env: WorldProxyEnv, characters: list[CharacterProfile], cfg: Config | None = None) -> dict:
         cfg = cfg or Config()
@@ -60,16 +55,10 @@ class Pipeline:
             for agent in agents:
                 if not self._should_act_now(agent.profile.name, world_before, env):
                     continue
-                if cfg.use_rag and self.memory is not None:
-                    query = f"goal={active_goal} world={world_before}"
-                    memory_snippets = self.memory.retrieve(agent.profile.name, query=query, k=cfg.rag_k)
-                else:
-                    memory_snippets = []
 
                 decision = agent.decide_action(
                     goal=active_goal,
                     world_vars=world_before,
-                    memory_snippets=memory_snippets,
                     recent_story=story[-4:],
                     max_plan_revisions=cfg.max_plan_revisions,
                 )
@@ -153,17 +142,6 @@ class Pipeline:
             timeline.append(f"t={step} narrator_selected={selected_summary}")
             timeline.append(f"t={step} story={narrated_step.paragraph}")
             story.append(narrated_step.paragraph)
-
-            if cfg.use_rag and self.memory is not None:
-                self.memory.add(
-                    timestep=step,
-                    characters=[decision.character for decision in effective_actions],
-                    actions=[decision.action for decision in effective_actions],
-                    narration=narrated_step.paragraph,
-                    reward=step_reward,
-                    world_before=world_before,
-                    world_after=world_after,
-                )
 
             for decision, result in zip(effective_actions, results):
                 timeline.append(
@@ -503,12 +481,3 @@ class Pipeline:
             ]
         )
         return " ".join(details)
-
-    @staticmethod
-    def _build_memory() -> object | None:
-        from memory import StructuredMemory
-
-        try:
-            return StructuredMemory()
-        except Exception:
-            return None

@@ -29,12 +29,6 @@ def parse_args() -> argparse.Namespace:
         help="Overwrite the output file instead of appending to it.",
     )
     parser.add_argument(
-        "--rag-k",
-        type=int,
-        default=0,
-        help="Number of memory snippets retrieved for each character decision.",
-    )
-    parser.add_argument(
         "--temperature",
         type=float,
         default=0.8,
@@ -82,7 +76,6 @@ def main() -> None:
                 output_handle=handle,
                 episode_index=episode_index,
                 max_steps=args.max_steps,
-                rag_k=args.rag_k,
                 temperature=args.temperature,
                 max_new_goals=args.max_new_goals,
             )
@@ -108,13 +101,11 @@ def run_episode(
     output_handle: Any,
     episode_index: int,
     max_steps: int,
-    rag_k: int,
     temperature: float,
     max_new_goals: int,
 ) -> int:
     env.reset([profile.name for profile in characters])
     story: list[str] = []
-    memory = build_memory() if rag_k > 0 else None
     rows_written = 0
     new_goals_used = 0
     goal_assigned_step = 1
@@ -125,20 +116,10 @@ def run_episode(
         proposed_actions: list[CharacterDecision] = []
 
         for profile in characters:
-            memory_snippets = (
-                memory.retrieve(
-                    profile.name,
-                    query=f"goal={active_goal} world={world_before}",
-                    k=rag_k,
-                )
-                if memory is not None
-                else []
-            )
             prompt_payload = build_prompt_payload(
                 profile=profile,
                 goal=active_goal,
                 world_vars=world_before,
-                memory_snippets=memory_snippets,
                 recent_story=story[-4:],
             )
 
@@ -244,17 +225,6 @@ def run_episode(
         step_reward = sum(result.reward for result in results)
         story.append(narrated_step.paragraph)
 
-        if memory is not None:
-            memory.add(
-                timestep=step,
-                characters=[decision.character for decision in selected_actions],
-                actions=[decision.action for decision in selected_actions],
-                narration=narrated_step.paragraph,
-                reward=step_reward,
-                world_before=world_before,
-                world_after=world_after,
-            )
-
         completed_result = next((result for result in results if result.info.get("goal_completed")), None)
         if completed_result is not None and new_goals_used < max_new_goals:
             goal_transition = generate_next_goal(
@@ -284,20 +254,10 @@ def run_episode(
     return rows_written
 
 
-def build_memory() -> Any:
-    from memory import StructuredMemory
-
-    try:
-        return StructuredMemory()
-    except Exception:
-        return None
-
-
 def build_prompt_payload(
     profile: CharacterProfile,
     goal: str,
     world_vars: dict[str, Any],
-    memory_snippets: list[str],
     recent_story: list[str],
 ) -> dict[str, Any]:
     world_knowledge = build_world_knowledge(profile, world_vars)
@@ -307,7 +267,6 @@ def build_prompt_payload(
         "goal": goal,
         "persona": profile.persona_text(),
         "world_vars": world_vars,
-        "memory_snippets": memory_snippets,
         "world_knowledge": world_knowledge,
         "recent_story": recent_scene_summaries,
     }
@@ -328,7 +287,6 @@ def sample_candidates(
             prompt_payload["persona"],
             prompt_payload["goal"],
             prompt_payload["world_vars"],
-            prompt_payload["memory_snippets"],
             prompt_payload["world_knowledge"],
             prompt_payload["recent_story"],
             (

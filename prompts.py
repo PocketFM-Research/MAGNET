@@ -7,7 +7,6 @@ def build_action_prompt(
     persona: str,
     goal: str,
     world_vars: dict[str, Any],
-    memory_snippets: list[str],
     world_knowledge: list[str],
     recent_scene_summaries: list[str],
     revision_feedback: str | None,

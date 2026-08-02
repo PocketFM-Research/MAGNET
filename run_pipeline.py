@@ -31,18 +31,6 @@ def parse_args() -> argparse.Namespace:
         help="Maximum critic-requested action revisions per character step.",
     )
     parser.add_argument(
-        "--use-rag",
-        action="store_true",
-        default=os.getenv("USE_RAG", "0").strip().lower() in {"1", "true", "yes"},
-        help="Enable memory retrieval for character prompts.",
-    )
-    parser.add_argument(
-        "--rag-k",
-        type=int,
-        default=int(os.getenv("RAG_K", "2")),
-        help="Number of memory snippets to retrieve when RAG is enabled.",
-    )
-    parser.add_argument(
         "--ablation",
         choices=list_ablation_names(),
         default=os.getenv("ABLATION", "").strip().lower() or None,
@@ -65,15 +53,12 @@ def main() -> None:
         critic_llm=critic_llm,
         narrator_llm=narrator_llm,
         action_llm=action_llm,
-        use_rag=args.use_rag,
     )
     env = WorldProxyEnv(fable=fable)
     cfg = Config(
         goal=fable.goal,
         max_steps=args.steps,
         max_plan_revisions=args.max_plan_revisions,
-        use_rag=args.use_rag,
-        rag_k=args.rag_k,
     )
     if args.ablation:
         cfg = get_ablation(args.ablation).apply(cfg)
