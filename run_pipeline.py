@@ -7,6 +7,7 @@ from networkx.readwrite import json_graph
 from environment import WorldProxyEnv
 from fables import get_fable_definition
 from llm import build_action_llm, build_critic_llm, build_default_llm, build_narrator_llm
+from log_recovery import recover_state_from_llm_output
 from pipeline import Config, Pipeline
 
 def parse_args() -> argparse.Namespace:
@@ -36,6 +37,13 @@ def parse_args() -> argparse.Namespace:
         default=os.getenv("ABLATION", "").strip().lower() or None,
         help="Optional ablation preset to apply.",
     )
+    parser.add_argument(
+        "--resume-from-log",
+        nargs="?",
+        const=os.getenv("GEMINI_OUTPUT_LOG_PATH", "llm_output.txt"),
+        default=None,
+        help="Reconstruct the latest recoverable state from an LLM output log and continue from there.",
+    )
     return parser.parse_args()
 
 
@@ -63,10 +71,15 @@ def main() -> None:
     if args.ablation:
         cfg = get_ablation(args.ablation).apply(cfg)
 
+    initial_state = None
+    if args.resume_from_log:
+        initial_state = recover_state_from_llm_output(args.resume_from_log, fable)
+
     result = pipeline.run(
         env=env,
         characters=characters,
         cfg=cfg,
+        initial_state=initial_state,
     )
 
     graph_path = os.getenv("WORLD_GRAPH_OUTPUT_PATH", "final_world_graph.json")
@@ -89,6 +102,7 @@ def main() -> None:
             "steps": result["steps"],
             "total_reward": result["total_reward"],
             "ablation": args.ablation,
+            "resumed_from_log": initial_state.source_path if initial_state is not None else None,
             "world_vars": result["world_vars"],
             "world_graph_path": graph_path if graph_exported else None,
         }

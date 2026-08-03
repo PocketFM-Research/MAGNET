@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from agents import CharacterAgent, NarratorAgent
 from environment import WorldProxyEnv
 from llm import build_action_llm, build_critic_llm, build_default_llm, build_narrator_llm
-from sim_types import CharacterDecision, CharacterProfile
+from sim_types import CharacterDecision, CharacterProfile, RecoveredRunState
 
 
 @dataclass
@@ -31,7 +31,13 @@ class Pipeline:
         self.narrator_llm = narrator_llm or build_narrator_llm(default_llm=default_llm)
         self.action_llm = action_llm or build_action_llm(default_llm=self.critic_llm)
 
-    def run(self, env: WorldProxyEnv, characters: list[CharacterProfile], cfg: Config | None = None) -> dict:
+    def run(
+        self,
+        env: WorldProxyEnv,
+        characters: list[CharacterProfile],
+        cfg: Config | None = None,
+        initial_state: RecoveredRunState | None = None,
+    ) -> dict:
         cfg = cfg or Config()
         if hasattr(env, "set_llm"):
             env.set_llm(self.narrator_llm)
@@ -41,13 +47,35 @@ class Pipeline:
         ]
         narrator = NarratorAgent(llm=self.narrator_llm)
 
-        env.reset([c.name for c in characters])
-        timeline: list[str] = []
-        story: list[str] = []
-        total_reward = 0.0
-        goal_assigned_step = 1
+        if initial_state is not None:
+            env.restore_world_vars([c.name for c in characters], initial_state.world_vars)
+            timeline = list(initial_state.timeline)
+            story = list(initial_state.story)
+            total_reward = float(initial_state.total_reward)
+            goal_assigned_step = int(initial_state.goal_assigned_step)
+            start_step = max(1, int(initial_state.next_step))
+            timeline.append(
+                f"resume_from_log source={initial_state.source_path} start_step={start_step}"
+            )
+        else:
+            env.reset([c.name for c in characters])
+            timeline = []
+            story = []
+            total_reward = 0.0
+            goal_assigned_step = 1
+            start_step = 1
 
-        for step in range(1, cfg.max_steps + 1):
+        if start_step > cfg.max_steps:
+            return {
+                "done": False,
+                "steps": int(env.get_world_vars().get("turn", 0)),
+                "total_reward": total_reward,
+                "world_vars": env.get_world_vars(),
+                "timeline": timeline,
+                "story": story,
+            }
+
+        for step in range(start_step, cfg.max_steps + 1):
             world_before = env.get_world_vars()
             active_goal = env.get_current_goal()
             proposed_actions = []
@@ -248,7 +276,7 @@ class Pipeline:
 
         return {
             "done": False,
-            "steps": cfg.max_steps,
+            "steps": int(env.get_world_vars().get("turn", 0)),
             "total_reward": total_reward,
             "world_vars": env.get_world_vars(),
             "timeline": timeline,

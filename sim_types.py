@@ -67,3 +67,15 @@ class NarratedStep:
 class SimulationState:
     world_vars: dict[str, Any] = field(default_factory=dict)
     timeline: list[str] = field(default_factory=list)
+
+
+@dataclass
+class RecoveredRunState:
+    world_vars: dict[str, Any] = field(default_factory=dict)
+    story: list[str] = field(default_factory=list)
+    timeline: list[str] = field(default_factory=list)
+    total_reward: float = 0.0
+    next_step: int = 1
+    goal_assigned_step: int = 1
+    source_path: str = ""
+    recovered_turns: int = 0

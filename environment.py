@@ -35,6 +35,13 @@ class WorldProxyEnv:
             self._set_world_var(key, value)
         return None
 
+    def restore_world_vars(self, characters: list[str], world_vars: dict[str, Any]) -> None:
+        self.reset(characters)
+        for key, value in world_vars.items():
+            if not isinstance(key, str):
+                continue
+            self._set_world_var(key, value)
+
     def get_world_vars(self) -> dict[str, Any]:
         world_vars: dict[str, Any] = {}
         for _, data in self.world_graph.nodes(data=True):
