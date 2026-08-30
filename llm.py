@@ -111,7 +111,10 @@ class GeminiLLM:
                 raw = resp.read().decode("utf-8")
         except error.HTTPError as exc:
             raw = exc.read().decode("utf-8", errors="replace")
-            raise LLMError(self._build_http_error_message(exc.code, raw)) from exc
+            raise LLMError(
+                f"{self._build_http_error_message(exc.code, raw)} "
+                f"(model={self.model}, base_url={self.base_url})"
+            ) from exc
 
         parsed = json.loads(raw)
         candidates = parsed.get("candidates")

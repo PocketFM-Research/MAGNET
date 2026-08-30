@@ -11,6 +11,8 @@ from statistics import mean
 from typing import Any
 from urllib import error, request
 
+from llm import AnthropicLLM, GeminiLLM, LLMError
+
 
 CATEGORY_ORDER = [
     "story",
@@ -39,6 +41,7 @@ LEVEL_CATEGORIES: dict[str, list[str]] = {
 CHAPTER_WORD_TARGET = 2000
 CHAPTER_SAMPLE_COUNT = 5
 SENTENCE_SAMPLE_COUNT = 5
+LLM_RETRY_ATTEMPTS = 3
 
 
 class EvalError(RuntimeError):
@@ -95,6 +98,78 @@ class OpenAILLM:
             raise EvalError(f"OpenAI response missing content: {raw[:500]}")
 
         return _parse_json_object(content)
+
+
+EvalLLM = OpenAILLM | GeminiLLM | AnthropicLLM
+
+DEFAULT_OPENAI_MODEL = "gpt-5.4-mini"
+DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5"
+
+
+def _normalize_provider_name(raw_provider: str | None) -> str:
+    provider = (raw_provider or "").strip().lower()
+    if provider in {"", "openai"}:
+        return "openai"
+    if provider in {"gemini", "google"}:
+        return "gemini"
+    if provider in {"anthropic", "claude"}:
+        return "anthropic"
+    raise EvalError(f"Unsupported LLM provider: {raw_provider}")
+
+
+def _default_model_for_provider(provider: str) -> str:
+    if provider == "gemini":
+        return os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
+    if provider == "anthropic":
+        return os.getenv("ANTHROPIC_MODEL", DEFAULT_ANTHROPIC_MODEL)
+    return os.getenv("OPENAI_MODEL", DEFAULT_OPENAI_MODEL)
+
+
+def build_eval_llm(
+    provider: str,
+    model: str | None = None,
+    base_url: str | None = None,
+    timeout_seconds: int = 600,
+) -> EvalLLM:
+    normalized_provider = _normalize_provider_name(provider)
+    resolved_model = model or _default_model_for_provider(normalized_provider)
+
+    if normalized_provider == "gemini":
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise EvalError("GEMINI_API_KEY is required for Gemini provider")
+        return GeminiLLM(
+            api_key=api_key,
+            model=resolved_model,
+            base_url=base_url or os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"),
+            timeout_seconds=timeout_seconds,
+            output_log_path=None,
+        )
+
+    if normalized_provider == "anthropic":
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise EvalError("ANTHROPIC_API_KEY is required for Anthropic provider")
+        return AnthropicLLM(
+            api_key=api_key,
+            model=resolved_model,
+            base_url=base_url or os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1"),
+            timeout_seconds=timeout_seconds,
+            output_log_path=None,
+            max_output_tokens=int(os.getenv("ANTHROPIC_MAX_OUTPUT_TOKENS", "8192")),
+            anthropic_version=os.getenv("ANTHROPIC_VERSION", "2023-06-01"),
+        )
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise EvalError("OPENAI_API_KEY is required for OpenAI provider")
+    return OpenAILLM(
+        api_key=api_key,
+        model=resolved_model,
+        base_url=base_url or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def _parse_json_object(content: str) -> dict[str, Any]:
@@ -271,7 +346,9 @@ def _score_prompts(level: str, content_text: str, context: str = "") -> tuple[st
     system = (
         "You are a rigorous fiction editor and evaluator. "
         "Score the provided text on a 0-100 rubric (integers only), where 0 is very poor and 100 is excellent. "
-        "Return only JSON."
+        "Return only a single JSON object. "
+        "Do not write any introduction, summary, explanation, markdown fence, refusal preamble, or trailing note. "
+        "If you are unsure, still return the JSON object with your best-effort scores."
     )
     context_block = f"CONTEXT:\n{context}\n\n" if context else ""
     user = (
@@ -284,10 +361,48 @@ def _score_prompts(level: str, content_text: str, context: str = "") -> tuple[st
         "  - `evidence` (short quote)\n"
         "- `overall_score`: int 0-100\n"
         "- `overall_rationale`: string\n\n"
+        "Do not say the text is incomplete or refuse the task. Score only the text provided.\n\n"
         f"{context_block}"
         f"TEXT:\n{content_text}"
     )
     return system, user
+
+
+def _complete_json_with_retries(
+    llm: EvalLLM,
+    *,
+    system_prompt: str,
+    user_prompt: str,
+    temperature: float,
+    attempts: int = LLM_RETRY_ATTEMPTS,
+) -> dict[str, Any]:
+    last_error: Exception | None = None
+    retry_system_prompt = system_prompt
+    retry_user_prompt = user_prompt
+    for attempt in range(1, attempts + 1):
+        try:
+            return llm.complete_json(
+                system_prompt=retry_system_prompt,
+                user_prompt=retry_user_prompt,
+                temperature=temperature,
+            )
+        except (EvalError, LLMError) as exc:
+            last_error = exc
+            if attempt == attempts:
+                break
+            retry_system_prompt = (
+                f"{system_prompt}\n"
+                "Your previous attempt was invalid because it was not parseable as a single JSON object. "
+                "Retry now and return JSON only."
+            )
+            retry_user_prompt = (
+                f"{user_prompt}\n\n"
+                "IMPORTANT RETRY INSTRUCTION: Return exactly one JSON object and nothing else. "
+                "Do not include commentary before or after the JSON."
+            )
+    if last_error is None:
+        raise EvalError("LLM request failed without an error")
+    raise EvalError(f"LLM request failed after {attempts} attempts: {last_error}") from last_error
 
 
 def _coerce_int_score(value: Any) -> int | None:
@@ -348,7 +463,7 @@ def normalize_score_payload(payload: dict[str, Any], level: str) -> dict[str, An
 
 
 def evaluate_text_block(
-    llm: OpenAILLM,
+    llm: EvalLLM,
     *,
     level: str,
     content_text: str,
@@ -356,7 +471,7 @@ def evaluate_text_block(
     source_meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     system, user = _score_prompts(level=level, content_text=content_text, context=context)
-    payload = llm.complete_json(system_prompt=system, user_prompt=user, temperature=0.1)
+    payload = _complete_json_with_retries(llm, system_prompt=system, user_prompt=user, temperature=0.1)
     normalized = normalize_score_payload(payload, level=level)
     return {
         "level": level,
@@ -386,7 +501,7 @@ def _aggregate_level(level: str, evals: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def evaluate_story_file(path: Path, llm: OpenAILLM, *, rng: random.Random) -> dict[str, Any]:
+def evaluate_story_file(path: Path, llm: EvalLLM, *, rng: random.Random) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8")
     story = extract_story_block(text)
 
@@ -470,6 +585,9 @@ def evaluate_story_file(path: Path, llm: OpenAILLM, *, rng: random.Random) -> di
 
 
 def parse_args() -> argparse.Namespace:
+    default_provider = _normalize_provider_name(
+        os.getenv("LLM_SCORE_EVAL_PROVIDER", os.getenv("EVAL_LLM_PROVIDER", os.getenv("LLM_PROVIDER", "openai")))
+    )
     parser = argparse.ArgumentParser(
         description=(
             "Rubric-score story quality from one txt file. "
@@ -480,14 +598,36 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("story", help="Path to story txt file")
     parser.add_argument(
+        "--provider",
+        default=default_provider,
+        choices=["openai", "gemini", "anthropic"],
+        help="LLM provider (default: LLM_SCORE_EVAL_PROVIDER/EVAL_LLM_PROVIDER/LLM_PROVIDER/openai)",
+    )
+    parser.add_argument(
         "--model",
-        default=os.getenv("EVAL_LLM_MODEL", os.getenv("OPENAI_MODEL", "gpt-5.4-mini")),
-        help="OpenAI model name (default: EVAL_LLM_MODEL/OPENAI_MODEL/gpt-5.4-mini)",
+        default=os.getenv("LLM_SCORE_EVAL_MODEL", os.getenv("EVAL_LLM_MODEL")),
+        help=(
+            "Model name (default: LLM_SCORE_EVAL_MODEL/EVAL_LLM_MODEL or the selected provider-specific default: "
+            "OPENAI_MODEL/gpt-5.4-mini, GEMINI_MODEL/gemini-2.5-flash, "
+            "ANTHROPIC_MODEL/claude-haiku-4-5)"
+        ),
     )
     parser.add_argument(
         "--base-url",
-        default=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-        help="OpenAI-compatible API base URL (default: OPENAI_BASE_URL or https://api.openai.com/v1)",
+        default=os.getenv("LLM_SCORE_EVAL_BASE_URL", os.getenv("EVAL_LLM_BASE_URL")),
+        help=(
+            "Optional API base URL override. Defaults to LLM_SCORE_EVAL_BASE_URL/EVAL_LLM_BASE_URL "
+            "or the provider-specific base URL from OPENAI_BASE_URL, GEMINI_BASE_URL, or ANTHROPIC_BASE_URL."
+        ),
+    )
+    parser.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=int(os.getenv("LLM_SCORE_EVAL_TIMEOUT_SECONDS", os.getenv("EVAL_LLM_TIMEOUT_SECONDS", "600"))),
+        help=(
+            "HTTP timeout for each LLM request in seconds "
+            "(default: LLM_SCORE_EVAL_TIMEOUT_SECONDS/EVAL_LLM_TIMEOUT_SECONDS or 600)"
+        ),
     )
     parser.add_argument(
         "--output",
@@ -505,11 +645,12 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise EvalError("OPENAI_API_KEY is required")
-
-    llm = OpenAILLM(api_key=api_key, model=args.model, base_url=args.base_url)
+    llm = build_eval_llm(
+        provider=args.provider,
+        model=args.model,
+        base_url=args.base_url,
+        timeout_seconds=args.timeout_seconds,
+    )
     rng = random.Random(args.seed)
 
     output = evaluate_story_file(Path(args.story), llm, rng=rng)
